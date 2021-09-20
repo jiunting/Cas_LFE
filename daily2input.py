@@ -211,8 +211,15 @@ hf.close()
 #--- for each station, cut data to ML's input format
 #for sta in all_sta:
 
-def detc_sta(sta):
-    #from LFE_tools import data_process, data_cut, ZEN2inp, cal_CCC, QC
+def detc_sta(sta,resume=False):
+    '''
+    Detect LFEs from continuous data. Model, data path and output name are hard-coded in the function
+    but modify them are encouraged
+        Input:
+            sta:        station name e.g. "PGC"
+            resume:     resume the calculation from the last stop. If the stop is within a day (daily data incomplete), delete the whole date in .csv file
+            
+    '''
 
     #--- parameters
     #model_path = 'large_1.0_unet_lfe_std_0.4.tf.02'
@@ -287,13 +294,19 @@ def detc_sta(sta):
         OUT1.write('network,sta,chn,stlon,stlat,stdep,starttime,endtime,y,idx_max_y,id\n')
         OUT1.close()
     else:
-        print("File: cut_daily_all.csv already exist! Exit and not overwritting everything")
-        sys.exit()
+        if resume:
+            print("File: %s already exist! Resume calculation......"%(file_csv))
+        else:    
+            print("File: %s already exist! Exit and not overwritting everything"%(file_csv))
+            sys.exit()
 
     # create hdf5 file
-    hf = h5py.File(file_hdf5,'a')
-    hf.create_group('data') #create group of data
-    hf.close()
+    if resume:
+        print("Resuming hdf5 file %s"%(file_hdf5))
+    else:
+        hf = h5py.File(file_hdf5,'a')
+        hf.create_group('data') #create group of data
+        hf.close()
 
     # get station loc
     stlon,stlat,stdep = stainfo[sta] #need to find station location
@@ -301,7 +314,21 @@ def detc_sta(sta):
 
     # for each Z, find other components
     #num = 0
+    # e.g. D_Z = "/projects/amt/shared/cascadia_CN/20140422.CN.YOUB..HHZ.mseed"
+    if resume:
+        import pandas as pd
+        csv = pd.read_csv(file_csv)
+        prev_T = pd.to_datetime(csv['starttime'],format='%Y-%m-%dT%H:%M:%S.%fZ')
+        prev_T = list(set([i_T.strftime('%Y%m%d')  for i_T in prev_T]))
+        prev_T.sort()
+
+    #======start looping all the daily data=======
     for D_Z in D_Zs:
+        if resume:
+           cur_T = D_Z.split('/')[-1].split('.')[0]
+           if cur_T in prev_T:
+               continue # continue to the next loop
+
         OUT1 = open(file_csv,'a')
         hf = h5py.File(file_hdf5,'a')
         print('--currently at:',D_Z)
@@ -386,8 +413,42 @@ def detc_sta(sta):
             tr_endtime = t_start + (i_lfe+1)*wid_sec - (1.0/sr)
             lfe_time = tr_starttime + wid_T[idx_maxy]
             tr_id = '.'.join([net,sta,chn])+'_'+lfe_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-4] #trace id
-            OUT1.write('%s,%s,%s,%.4f,%.4f,%f,%s,%s,%.2f,%d,%s\n'%(net,sta,chn,stlon,stlat,stdep,tr_starttime,tr_endtime,tmp_y[i_lfe][idx_maxy],idx_maxy,tr_id))
-            hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
+            if resume:
+                # some data are old, overwrite the old data, add the new data
+                OUT1.write('%s,%s,%s,%.4f,%.4f,%f,%s,%s,%.2f,%d,%s\n'%(net,sta,chn,stlon,stlat,stdep,tr_starttime,tr_endtime,tmp_y[i_lfe][idx_maxy],idx_maxy,tr_id))
+                '''
+                try:
+                    del hf['data/'+tr_id]
+                except:
+                    #print('dataset not exist')
+                    pass
+                hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
+                '''
+                chk_k = 'data/'+tr_id
+                tmp_data = hf.get(chk_k)
+                tmp_data = hf.get(chk_k)
+                if tmp_data:
+                    #overwrite the existing data
+                    tmp_data[0] = sav_data_Z[i_lfe]
+                    tmp_data[1] = sav_data_E[i_lfe]
+                    tmp_data[2] = sav_data_N[i_lfe]
+                else:
+                    # data do not exist, create new dataset
+                    #print('data do not exist:','data/'+tr_id)
+                    try:
+                        hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
+                    except:
+                        # hdf5 dataset corrupt
+                        print("hdf5 dataset corrupted, no way to recover........?")
+                        hf.close()
+                        sys.exit()
+                        # create dataset but add an additional "S"
+                        #hf.create_dataset('data/'+tr_id+'S',data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
+
+            else:
+                # writing new data
+                OUT1.write('%s,%s,%s,%.4f,%.4f,%f,%s,%s,%.2f,%d,%s\n'%(net,sta,chn,stlon,stlat,stdep,tr_starttime,tr_endtime,tmp_y[i_lfe][idx_maxy],idx_maxy,tr_id))
+                hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
             #print('  save csv:',tr_id)
             #print('  save h5py:','data/'+tr_id)
 
@@ -425,9 +486,10 @@ def detc_sta(sta):
 
 # parallel processing
 #all_sta = ['SSIB','TWKB'] #test these two stations
-n_cores = len(all_sta)
-results = Parallel(n_jobs=n_cores,verbose=10)(delayed(detc_sta)(sta) for sta in all_sta  )
+#n_cores = len(all_sta)
+#results = Parallel(n_jobs=n_cores,verbose=10)(delayed(detc_sta)(sta) for sta in all_sta  )
 
+detc_sta('PGC',resume=False)
 
 
 
