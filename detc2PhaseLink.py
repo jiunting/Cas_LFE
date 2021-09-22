@@ -5,8 +5,8 @@ import glob
 
 #
 csv_path = '/projects/amt/jiunting/Cascadia_LFE/Detections_S'
-outfile = 'CasLFEs_S.out'
-thres = 0.1 #minumum y value
+outfile = 'CasLFEs_S_y0.7.out'
+thres = 0.7 #minumum y value
 
 
 csvs = glob.glob(csv_path+'/'+'cut_daily_*.csv')
@@ -38,6 +38,9 @@ id           PO.TWGB.HH_2005-01-01T07:11:00.54
 idx = all_data[all_data['y']>=thres].index
 
 # writing output
+with open('tmplog.out','w') as OUT2:
+    pass
+
 OUT1 = open(outfile,'w')
 Nper = len(idx)//10000
 for i in idx:
