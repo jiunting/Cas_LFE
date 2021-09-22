@@ -23,7 +23,8 @@ with open(detcFile,'r') as IN1:
         OT = UTCDateTime('20'+line.split()[1]) #YYMMDD
         HH = int(line.split()[2])*3600
         SS = float(line.split()[3])
-        OT = OT + HH + SS + EQinfo[ID]['catShift'] #detected origin time
+        #OT = OT + HH + SS + EQinfo[ID]['catShift'] #detected origin time
+        OT = OT + HH + SS  #detected template time, so that OT+P1 or P2 is the arrival time
         sav_OT_template.append(OT.datetime) # save the catalog time
         sav_fam.append(ID)
         sav_mag.append(line.split()[4])
