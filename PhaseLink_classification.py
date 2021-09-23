@@ -76,7 +76,7 @@ for k in sav_table.keys():
 
 # read PhaseLink output file (.nlloc) and use the checking table to classify the family
 '''
-Example input
+Example
 VGZ    CN   ?    ? S      ? 20050907 0754  7.2900 GAU  1.00e-01 -1.00e+00 -1.00e+00 -1.00e+00
 SILB   PO   ?    ? S      ? 20050907 0754 10.8700 GAU  1.00e-01 -1.00e+00 -1.00e+00 -1.00e+00
 PGC    CN   ?    ? S      ? 20050907 0754 11.8400 GAU  1.00e-01 -1.00e+00 -1.00e+00 -1.00e+00
@@ -84,6 +84,26 @@ SNB    CN   ?    ? S      ? 20050907 0754 16.3000 GAU  1.00e-01 -1.00e+00 -1.00e
 '''
 
 
+#IN1 = open('../PhaseLink/CasLFEs_S_y0.1.nlloc','r')
+filename = '../PhaseLink/CasLFEs_S_y0.1.nlloc'
+sav_sta = []
+sav_phs = []
+sav_t = []
+
+with open(filename,'r') as IN1:
+    for line in IN1:
+        if len(line.split())!=14:
+            # this is header line
+            sav_sta = []
+            sav_phs = []
+            sav_t = []
+            continue
+        sta = line.split()[0]
+        phs = line.split()[4]
+        t = UTCDateTime(line.split()[6]+'T'+line.split()[7]) + float(line.split()[8])
+        sav_sta.append(sta)
+        sav_phs.append(phs)
+        sav_t.append(t)
 
 
 
