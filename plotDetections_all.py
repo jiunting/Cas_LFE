@@ -59,7 +59,7 @@ cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
 csvs = glob.glob('./Detections_S/*.csv')
 #csvs = glob.glob('./Detections_P/*.csv')
 
-thres = 0.5 #plot everything >= thres
+thres = 0.1 #plot everything >= thres
 
 #PO.SILB.HH_2005-01-01T16:53:28.41
 sav_detcTime = {}

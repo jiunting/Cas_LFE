@@ -3,13 +3,21 @@
 import pandas as pd
 import glob
 
-#
-csv_path = '/projects/amt/jiunting/Cascadia_LFE/Detections_S'
-outfile = 'CasLFEs_S_y0.7.out'
-thres = 0.7 #minumum y value
+# for S wave
+#csv_path = '/projects/amt/jiunting/Cascadia_LFE/Detections_S'
+#outfile = 'CasLFEs_S_y0.1.out'
+#outfile = 'CasLFEs_S_y0.7.out'
+#thres = 0.1 #minumum y value
+#thres = 0.7 #minumum y value
+
+# for P wave
+csv_path = '/projects/amt/jiunting/Cascadia_LFE/Detections_P'
+outfile = 'CasLFEs_P_y0.1.out'
+thres = 0.1 #minumum y value
 
 
-csvs = glob.glob(csv_path+'/'+'cut_daily_*.csv')
+#csvs = glob.glob(csv_path+'/'+'cut_daily_*.csv')
+csvs = glob.glob(csv_path+'/'+'cut_daily_CN.PGC.csv')
 
 all_data = []
 for csv in csvs:

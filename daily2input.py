@@ -126,105 +126,23 @@ def QC(data,Type='data'):
     return True
 
 
-'''
-#--- parameters
-#model_path = 'large_2.0_unet_lfe_std_0.4.tf.014'
-model_path = 'large_1.0_unet_lfe_std_0.4.tf.02'
-#model_path = 'large_0.5_unet_lfe_std_0.4.tf.01'
-drop = False
-N_size = float(model_path.split('/')[-1].split('_')[1])
-run_num = model_path.split('/')[-1].split('.tf.')[-1]
-
-#--- build model artechetecture
-if drop:
-    model = unet_tools.make_large_unet_drop(N_size,sr=100,ncomps=3)
-else:
-    model = unet_tools.make_large_unet(N_size,sr=100,ncomps=3)
-
-# load weights
-model.load_weights(model_path)
-
-
-#--- where are the data
-dir1 = '/projects/amt/shared/cascadia_PO' # .mseed files are in PO or CN directory
-net1 = 'PO' #PO stations are always HH
-dir2 = '/projects/amt/shared/cascadia_CN'
-net2 = 'CN'
-CN_list = {'GOBB':'EH',
-            'LZB':'BH',
-            'MGB':'EH',
-            'NLLB':'BH',
-            'PFB':'HH',
-            'PGC':'BH',
-            'SNB':'BH',
-            'VGZ':'BH',
-            'YOUB':'HH',
-            }
-
-
-epsilon = 1e-6
-thres = 0.1
-'''
-
-#dir1 = '/Users/timlin/Documents/Project/Cascadia_LFE'
-#dir2 = '/Users/timlin/Documents/Project/Cascadia_LFE'
-
-#--- get all the stations
-phases = np.load('sav_family_phases.npy',allow_pickle=True)
-phases = phases.item()
-all_sta = []
-for k in phases.keys():
-    all_sta += list(phases[k]['sta'].keys())
-
-all_sta = list(set(all_sta))
-
-print('number of station:',len(all_sta))
-
-# --- load station info(location) file
-stainfo = np.load('stainfo.npy',allow_pickle=True)
-stainfo = stainfo.item()
-
-#check if station coord are completed
-for s in all_sta:
-    if not (s in stainfo):
-        print("station: %s not found"%(s))
-
-'''
-# create a csv file to save file information
-if not(os.path.exists('cut_daily_all.csv')):
-    OUT1 = open('cut_daily_all.csv','w')
-    OUT1.write('network,sta,chn,stlon,stlat,stdep,starttime,endtime,y,idx_max_y,id\n')
-    OUT1.close()
-else:
-    print("File: cut_daily_all.csv already exist! Exit and not overwritting everything")
-    sys.exit()
-
-
-# create hdf5 file
-hf = h5py.File('cut_daily_all.hdf5','a')
-hf.create_group('data') #create group of data
-hf.close()
-'''
-
-#OUT2 = open('all_sta.txt','w') # all the station used
-#OUT2.write('#sta stlon stlat elev\n')
-#--- for each station, cut data to ML's input format
-#for sta in all_sta:
-
-def detc_sta(sta,resume=False):
+def detc_sta(model_name,sta,outdir='Detections_S',resume=False,save_hdf5=False):
     '''
     Detect LFEs from continuous data. Model, data path and output name are hard-coded in the function
     but modify them are encouraged
         Input:
             sta:        station name e.g. "PGC"
+            outdir:     output directory
             resume:     resume the calculation from the last stop. If the stop is within a day (daily data incomplete), delete the whole date in .csv file
+                        Careful! resume mode do NOT work when save_hdf5=True due to the hdf5 file corrupt.
+            save_hdf5:  save the 15s detection waveforms (this is slow when saving over 1M of waveforms)
             
     '''
-
     #--- parameters
     #model_path = 'large_1.0_unet_lfe_std_0.4.tf.02'
-    model_path = 'large_1.0_unet_lfe_std_0.4.tf.002' # this is the S wave model
+    #model_path = 'large_1.0_unet_lfe_std_0.4.tf.002' # this is the S wave model
     #model_path = 'large_1.0_unet_lfe_std_0.4.tf.006' # this is the P wave model
+    model_path = model_name
     drop = False
     N_size = float(model_path.split('/')[-1].split('_')[1])
     run_num = model_path.split('/')[-1].split('.tf.')[-1]
@@ -238,7 +156,9 @@ def detc_sta(sta,resume=False):
     # load weights
     model.load_weights(model_path)
 
-    #--- where are the data
+    #------where are the data, and what's its channel-------
+    # These help the Line#197 where to find *Z.mseed data based on the station name(the only given input)
+    # the data can only be in PO or CN for my case
     dir1 = '/projects/amt/shared/cascadia_PO' # .mseed files are in PO or CN directory
     net1 = 'PO' #PO stations are always HH
     dir2 = '/projects/amt/shared/cascadia_CN'
@@ -253,15 +173,13 @@ def detc_sta(sta,resume=False):
             'VGZ':'BH',
             'YOUB':'HH',
             }
+    #------define where are the data END-----------
 
-
+    # epsilon value shouldn't change
     epsilon = 1e-6
+    # what decision value are you using
     thres = 0.1
 
-
-    #OUT1 = open('cut_daily_all.csv','a')
-    #hf = h5py.File('cut_daily_all.hdf5','a')
-    #sta = 'SNB'
     if sta in CN_list:
         #data under CN
         net = net2
@@ -274,7 +192,7 @@ def detc_sta(sta,resume=False):
         chn = 'HH'
         loc = '' #loc is always empty in this case
 
-    # get all the dailydata list
+    # get all the dailydata list for this station
     print('get data form: ',tar_dir+'/*.'+net+'.'+sta+'.'+loc+'.'+chn+'Z.mseed')
     D_Zs = glob.glob(tar_dir+'/*.'+net+'.'+sta+'.'+loc+'.'+chn+'Z.mseed')
     D_Zs.sort()
@@ -283,10 +201,16 @@ def detc_sta(sta,resume=False):
     if len(D_Zs)==0:
         return # for this sta input, none data can be found
 
-    # create output file here
-    # create a csv file to save file information
-    file_csv = './Detections_S/cut_daily_%s.%s.csv'%(net,sta)
-    file_hdf5 = './Detections_S/cut_daily_%s.%s.hdf5'%(net,sta)
+    # create output directory & file here
+    if not(os.path.exists(outdir)):
+        os.makedirs(outdir)
+    # csv file to save detection information
+    file_csv = outdir+'/'+'cut_daily_%s.%s.csv'%(net,sta)
+    # hdf5 file to save waveforms
+    if save_hdf5:
+        file_hdf5 = outdir+'/'+'cut_daily_%s.%s.hdf5'%(net,sta)
+    #file_csv = './Detections_S/cut_daily_%s.%s.csv'%(net,sta)
+    #file_hdf5 = './Detections_S/cut_daily_%s.%s.hdf5'%(net,sta)
     #file_csv = './Detections_P/cut_daily_%s.%s.csv'%(net,sta)
     #file_hdf5 = './Detections_P/cut_daily_%s.%s.hdf5'%(net,sta)
     if not(os.path.exists(file_csv)):
@@ -301,16 +225,24 @@ def detc_sta(sta,resume=False):
             sys.exit()
 
     # create hdf5 file
-    if resume:
-        print("Resuming hdf5 file %s"%(file_hdf5))
-    else:
-        hf = h5py.File(file_hdf5,'a')
-        hf.create_group('data') #create group of data
-        hf.close()
+    if save_hdf5:
+        if resume:
+            print("WARNING! resume on hdf5 file: %s can cause unknown issue, terminate for safty"%(file_hdf5))
+            sys.exit()
+        else:
+            if not(os.path.exists(file_hdf5)):
+                hf = h5py.File(file_hdf5,'w')
+                hf.create_group('data') #create group of data
+                hf.close()
+            else:
+                print("File: %s already exist! Exit and not overwritting everything"%(file_hdf5))
+                sys.exit()
 
     # get station loc
-    stlon,stlat,stdep = stainfo[sta] #need to find station location
-    #OUT2.write('%s %f %f %f\n'%(sta,stlon,stlat,stdep))
+    try:
+        stlon,stlat,stdep = stainfo[sta] #find station location
+    except:
+        stlon,stlat,stdep = -1,-1,-1 # no station location information
 
     # for each Z, find other components
     #num = 0
@@ -330,7 +262,8 @@ def detc_sta(sta,resume=False):
                continue # continue to the next loop
 
         OUT1 = open(file_csv,'a')
-        hf = h5py.File(file_hdf5,'a')
+        if save_hdf5:
+            hf = h5py.File(file_hdf5,'a')
         print('--currently at:',D_Z)
         comp = D_Z.split('/')[-1].split('.')[-2]
         D_E = D_Z.replace(comp,comp[:2]+'E')
@@ -338,8 +271,9 @@ def detc_sta(sta,resume=False):
         # also check if the E,N data exist
         if (not os.path.exists(D_E)) or (not os.path.exists(D_N)):
             print('Missing at least one component! data: %s or %s does not exist!'%(D_E,D_N))
-            hf.close()
             OUT1.close()
+            if save_hdf5:
+                hf.close()
             continue
         
         # process the 3C data to be exact 1 day, detrend and high-pass
@@ -348,8 +282,9 @@ def detc_sta(sta,resume=False):
             D_E = data_process(D_E,sampl=100)
             D_N = data_process(D_N,sampl=100)
         except:
-            hf.close()
             OUT1.close()
+            if save_hdf5:
+                hf.close()
             continue
         times = D_Z[0].times()
         t_start = D_Z[0].stats.starttime
@@ -417,13 +352,14 @@ def detc_sta(sta,resume=False):
                 # some data are old, overwrite the old data, add the new data
                 OUT1.write('%s,%s,%s,%.4f,%.4f,%f,%s,%s,%.2f,%d,%s\n'%(net,sta,chn,stlon,stlat,stdep,tr_starttime,tr_endtime,tmp_y[i_lfe][idx_maxy],idx_maxy,tr_id))
                 '''
+                # test if a corrupted hdf5 file can be fixed......
                 try:
                     del hf['data/'+tr_id]
                 except:
                     #print('dataset not exist')
                     pass
                 hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
-                '''
+                
                 chk_k = 'data/'+tr_id
                 tmp_data = hf.get(chk_k)
                 tmp_data = hf.get(chk_k)
@@ -444,53 +380,66 @@ def detc_sta(sta,resume=False):
                         sys.exit()
                         # create dataset but add an additional "S"
                         #hf.create_dataset('data/'+tr_id+'S',data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
+                '''
 
             else:
                 # writing new data
                 OUT1.write('%s,%s,%s,%.4f,%.4f,%f,%s,%s,%.2f,%d,%s\n'%(net,sta,chn,stlon,stlat,stdep,tr_starttime,tr_endtime,tmp_y[i_lfe][idx_maxy],idx_maxy,tr_id))
-                hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
-            #print('  save csv:',tr_id)
-            #print('  save h5py:','data/'+tr_id)
-
-        #time_aft = datetime.datetime.now()
-        #print('total run time:',(time_aft-time_bef)/60.0)
+                if save_hdf5:
+                    hf.create_dataset('data/'+tr_id,data=[sav_data_Z[i_lfe],sav_data_E[i_lfe],sav_data_N[i_lfe]]) #this is the raw data (no feature scaling)
         
         #save result every sta,daily
-        hf.close()
         OUT1.close()
+        if save_hdf5:
+            hf.close()
 
         # early stop for debug purpose
         #num += 1
         #if num>10:
         #    break
         
-        #sav_data = np.array(sav_data)
-        #np.save('testQQQ.npy',sav_data)
-        #sys.exit()
-    #save result every sta
-    #hf.close()
-    #OUT1.close()
-    #break
 
 
 
 
-#OUT2.close()
 
+# main 
+'''
+#--- get the station list here
+# this gives a list of names: e.g.  ['PGC','GOBB','KLNB'.....]
+phases = np.load('sav_family_phases.npy',allow_pickle=True)
+phases = phases.item()
+all_sta = []
+for k in phases.keys():
+    all_sta += list(phases[k]['sta'].keys())
 
-#process one-by-one
-#print('testing station:','SSIB')
-#detc_sta('SSIB')
-#print('testing station:','TWKB')
-#detc_sta('TWKB')
+all_sta = list(set(all_sta))
+
+print('number of station:',len(all_sta)) # how many stations are used in the catalog
+
+# --- load station info(location) file
+stainfo = np.load('stainfo.npy',allow_pickle=True)
+stainfo = stainfo.item()
+
+#check if station coord are completed
+for s in all_sta:
+    if not (s in stainfo):
+        print("station: %s not found"%(s))
+'''
+
+# --- load station info(location) file
+#stainfo = np.load('stainfo.npy',allow_pickle=True)
+#stainfo = stainfo.item()
+
+# provide a list of station name directly
+all_sta = ["SILB","SSIB","GOWB"]
+model_name = "large_1.0_unet_lfe_std_0.4.tf.002" #S-wave model
+outdir = "Detections_S_new"
+resume = True
+save_hdf5 = False
+n_cores = 8
 
 # parallel processing
-#all_sta = ['SSIB','TWKB'] #test these two stations
-#n_cores = len(all_sta)
-#results = Parallel(n_jobs=n_cores,verbose=10)(delayed(detc_sta)(sta) for sta in all_sta  )
-
-detc_sta('PGC',resume=False)
-
-
+results = Parallel(n_jobs=n_cores,verbose=0)(delayed(detc_sta)(model_name,sta,outdir,resume,save_hdf5) for sta in all_sta  )
 
 
