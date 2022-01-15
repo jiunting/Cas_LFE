@@ -154,8 +154,8 @@ idx_path = '/projects/amt/jiunting/Cascadia_LFE/Index'
 
 
 # normalized training data
-#models = ['large_0.5_unet_lfe_std_0.4.tf.001','large_1.0_unet_lfe_std_0.4.tf.002']
-models = ['large_0.5_unet_lfe_std_0.4.tf.005','large_1.0_unet_lfe_std_0.4.tf.006'] #P wave model
+models = ['large_0.5_unet_lfe_std_0.4.tf.001','large_1.0_unet_lfe_std_0.4.tf.002']
+#models = ['large_0.5_unet_lfe_std_0.4.tf.005','large_1.0_unet_lfe_std_0.4.tf.006'] #P wave model
 #models = ['large_0.5_unet_lfe_std_0.4.tf.01','large_1.0_unet_lfe_std_0.4.tf.02','large_2.0_unet_lfe_std_0.4.tf.03','large_4.0_unet_lfe_std_0.4.tf.04' ]
 texts = ['size 0.5','size 1','size 2','size 4']
 larges = [0.5,1,2,4]
@@ -164,8 +164,8 @@ colors = [[0,0.8,0],[1,0,1],[0.8,0,0],[0,0,1]]
 #x_data = h5py.File('Cascadia_lfe_QC_rmean.h5', 'r')
 #n_data = h5py.File('Cascadia_noise_QC_rmean.h5', 'r')
 
-#x_data = h5py.File('Cascadia_lfe_QC_rmean_norm.h5', 'r') # for S wave
-x_data = h5py.File('Cascadia_lfe_QC_rmean_norm_P.h5', 'r') # for P wave
+x_data = h5py.File('Cascadia_lfe_QC_rmean_norm.h5', 'r') # for S wave
+#x_data = h5py.File('Cascadia_lfe_QC_rmean_norm_P.h5', 'r') # for P wave
 n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r') #for noise
 
 #X = np.load('Xtest_large.npy')
@@ -217,8 +217,8 @@ plt.xticks([],[])
 plt.yticks([],[])
 
 
-#plt.savefig('testlosses.png')
-plt.savefig('testlosses_P.png')
+plt.savefig('testlosses.png')
+#plt.savefig('testlosses_P.png')
 plt.close()
 
 #import sys
@@ -228,10 +228,10 @@ plt.close()
 print('==========start loading model=============')
 
 #models = ['./checks/large_2.0_unet_lfe_std_0.4.tf.03_0024.ckpt']
-#models = ['large_0.5_unet_lfe_std_0.4.tf.001','large_1.0_unet_lfe_std_0.4.tf.002']  #S wave
-#run_nums = ['001','002']
-models = ['large_0.5_unet_lfe_std_0.4.tf.005','large_1.0_unet_lfe_std_0.4.tf.006']  #P wave
-run_nums = ['005','006']
+models = ['large_0.5_unet_lfe_std_0.4.tf.001','large_1.0_unet_lfe_std_0.4.tf.002']  #S wave
+run_nums = ['001','002']
+#models = ['large_0.5_unet_lfe_std_0.4.tf.005','large_1.0_unet_lfe_std_0.4.tf.006']  #P wave
+#run_nums = ['005','006']
 larges = [0.5,1]
 stds = [0.4] #std width 
 
@@ -259,16 +259,17 @@ for i,model_path in enumerate(models):
     #noise_test_inds = np.hstack([noise_test_inds,noise_valid_inds])
 
     # ========get testing data, this can be generated previously=========
-    my_data = my_data_generator(8192,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=False)  #when valid=True, want all the data, batch_size is automatically
+    #my_data = my_data_generator(10000,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=False)  #when valid=True, want all the data, batch_size is automatically
+    my_data = my_data_generator(1,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=True)  #when valid=True, want all the data, batch_size is automatically
     # "i'll stop here"
     X,y = next(my_data)
-    '''
-    np.save('X.npy',X)
-    np.save('y.npy',y)
-    import sys
-    sys.exit()
-    print('X,y=',X,y) 
-    '''
+    
+    #np.save('X.npy',X)
+    np.save('y_all_valid.npy',y)
+    #import sys
+    #sys.exit()
+    #print('X,y=',X,y) 
+    
     # model predictions
     y_pred = model.predict(X)
 
@@ -283,11 +284,13 @@ for i,model_path in enumerate(models):
     sav_thres = []
     for thresh in threshs:
         # turn 2D prediction to 1D labels LFE or noise depending on threshold
+        #print('testing thres=%f'%(thresh))
         y_pred_TF = np.where(np.max(y_pred,axis=1) >= thresh, 1, 0)
         TP = np.sum((y_true==1) & (y_pred_TF==1))
         TN = np.sum((y_true==0) & (y_pred_TF==0))
         FP = np.sum((y_true==0) & (y_pred_TF==1))
         FN = np.sum((y_true==1) & (y_pred_TF==0))
+        #print(' summing of all=%d'%(TP+TN+FP+FN))
         #print('TP,FN=',TP,FN)
         #print('FP,TN=',FP,TN)
         #print('TP,FP=',TP,FP)
@@ -303,7 +306,8 @@ for i,model_path in enumerate(models):
         sav_prec.append(prec)
         sav_acc.append(acc)
         sav_thres.append(thresh)
-  
+
+
     # calculate AUC, area under ROC curve
     AUC = np.abs(np.trapz(sav_TPR,sav_FPR)) #FPR starts from right to left making integration negative
      
@@ -354,7 +358,8 @@ for i,model_path in enumerate(models):
         tmp_FN = 0
         for n in range(y.shape[0]):
             #y[n] v.s. y_pred[n]
-            tmpidx_y = np.where(y[n]>=thresh)[0]
+            #tmpidx_y = np.where(y[n]>=thresh)[0]
+            tmpidx_y = np.where(y[n]==1)[0] # true arrival time is exactly at where y=1
             tmpidx_y_pred = np.where(y_pred[n]>=thresh)[0]
             if len(tmpidx_y)==0:
                 # this is just noise
@@ -366,18 +371,21 @@ for i,model_path in enumerate(models):
                     tmp_FP += 1
             else:
                 # this is actual LFE signal, should also consider travel time
+                assert len(tmpidx_y)==1, "1 appears more than once?"
                 if len(tmpidx_y_pred)==0:
                     # false negative
                     tmp_FN += 1
                 else:
                     # signal v.s. signal, should also consider travel time
-                    tmpidx_y_max = np.where(y[n]==np.max(y[n]))[0][0]
-                    tmpidx_y_pred_max = np.where(y_pred[n]==np.max(y_pred[n]))[0][0]
+                    #tmpidx_y_max = np.where(y[n]==np.max(y[n]))[0][0]
+                    tmpidx_y_max = tmpidx_y[0]
+                    tmpidx_y_pred_max = np.where(y_pred[n]==np.max(y_pred[n]))[0][0] #assuming that each 15 s trace has only one LFE data!!
                     #if np.abs(tmpidx_y_max-tmpidx_y_pred_max)<stds[i]*sr:
                     if np.abs(tmpidx_y_max-tmpidx_y_pred_max)<=2.0*sr:
                         tmp_TP += 1
                     else:
-                        tmp_FN += 1 # although it detect the LFE, but it's not at the right arrival time
+                        #tmp_FN += 1 # although it detect the LFE, but it's not at the right arrival time
+                        tmp_FP += 1 # although it detect the LFE, but it's not at the right arrival time
 
         assert (tmp_TP + tmp_TN + tmp_FP + tmp_FN) == y.shape[0], "length different! something wrong"
         try:

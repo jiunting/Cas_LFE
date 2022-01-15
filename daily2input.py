@@ -173,6 +173,19 @@ def detc_sta(model_name,sta,outdir='Detections_S',resume=False,save_hdf5=False):
             'VGZ':'BH',
             'YOUB':'HH',
             }
+    dir3 = '/projects/amt/shared/cascadia_C8'
+    net3 = 'C8'
+    C8_list = {'BPCB':'HH',
+               'GLBC':'HH',
+               'JRBC':'HH',
+               'LCBC':'HH',
+               'MGCB':'HH',
+               'PHYB':'HH',
+               'SHDB':'HH',
+               'SHVB':'HH',
+               'SOKB':'HH',
+               'TWBB':'HH',
+            }
     #------define where are the data END-----------
 
     # epsilon value shouldn't change
@@ -185,6 +198,11 @@ def detc_sta(model_name,sta,outdir='Detections_S',resume=False,save_hdf5=False):
         net = net2
         tar_dir = dir2
         chn = CN_list[sta]
+        loc = '' #loc can be '00','01' etc. but is always empty in this case
+    elif sta in C8_list:
+        net = net3
+        tar_dir = dir3
+        chn = C8_list[sta]
         loc = '' #loc can be '00','01' etc. but is always empty in this case
     else:
         net = net1
@@ -203,7 +221,10 @@ def detc_sta(model_name,sta,outdir='Detections_S',resume=False,save_hdf5=False):
 
     # create output directory & file here
     if not(os.path.exists(outdir)):
-        os.makedirs(outdir)
+        try:
+            os.makedirs(outdir)
+        except:
+            print('directory %s already generated during parallel process'%(outdir))
     # csv file to save detection information
     file_csv = outdir+'/'+'cut_daily_%s.%s.csv'%(net,sta)
     # hdf5 file to save waveforms
@@ -428,16 +449,20 @@ for s in all_sta:
 '''
 
 # --- load station info(location) file
-#stainfo = np.load('stainfo.npy',allow_pickle=True)
-#stainfo = stainfo.item()
+stainfo = np.load('stainfo.npy',allow_pickle=True)
+stainfo = stainfo.item()
 
 # provide a list of station name directly
-all_sta = ["SILB","SSIB","GOWB"]
-model_name = "large_1.0_unet_lfe_std_0.4.tf.002" #S-wave model
-outdir = "Detections_S_new"
-resume = True
-save_hdf5 = False
-n_cores = 8
+all_sta = ['BPCB','GLBC','JRBC','LCBC','MGCB','PHYB','SHDB','SHVB','SOKB','TWBB']
+#all_sta = ['SHDB','SOKB']
+#model_name = "large_1.0_unet_lfe_std_0.4.tf.002" #S-wave model
+model_name = "large_1.0_unet_lfe_std_0.4.tf.006" #P-wave model
+#outdir = "Detections_S_new"
+outdir = "Detections_P_new2"
+resume = False
+#save_hdf5 = True
+save_hdf5 = False # don't want to save everything for Detections_P_new case...
+n_cores = 16
 
 # parallel processing
 results = Parallel(n_jobs=n_cores,verbose=0)(delayed(detc_sta)(model_name,sta,outdir,resume,save_hdf5) for sta in all_sta  )
