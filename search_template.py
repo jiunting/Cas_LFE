@@ -21,7 +21,7 @@ import os,sys, time
 import glob
 from numba import jit
 from joblib import Parallel, delayed
-
+import seaborn as sns
 
 
 #--- process daily data
@@ -165,22 +165,28 @@ def roll_zeropad(a, shift, axis=None):
         return res
 
 
-'''
-def batch_CC(template,target_keys):
+def batch_CC(n_i,i,target_keys,file_hdf5):
     # do CC calculations w.r.t. a template i.g. data1
     # template is an np array
-    # loopable target_keys for target data 
-    for j in target_keys:
+    # loopable target_keys for target data
+    hf = h5py.File(file_hdf5,'r')
+    template = np.array(hf['data/'+i]).reshape(-1)
+    group = {}
+    sav_CC = {n_i:[]}
+    for n_j,j in enumerate(target_keys):
+        if n_j<=n_i:
+            continue
         data2 = np.array(hf['data/'+j]).reshape(-1)
         data1,data2 = norm_data(template,data2)
         CC,shift = cal_CCC(data1,data2)
+        sav_CC[n_i].append(CC)
         if CC>=group_CC:
             #print("=============")
             #print(i,j)
             #print("CC=",CC)
             # add in the group
             #group_rec.add(n_i)
-            group_rec.add(n_j)
+            #group_rec.add(n_j)
             # create a new group or merge into the existing group
             if n_i in group:
                 group[n_i]['group'].append(n_j)
@@ -192,8 +198,11 @@ def batch_CC(template,target_keys):
             else:
                 tmp = roll_zeropad(np.array(hf['data/'+i]).reshape(-1),-int(0.5*shift)) + roll_zeropad(np.array(hf['data/'+j]).reshape(-1),int(0.5*shift))
                 tmp = tmp/max(np.abs(tmp))
-                group[n_i] = {'group':[n_j],'template':tmp}
-'''     
+                group[n_i] = {'group':[n_i,n_j],'template':tmp}
+    hf.close()
+    return group,sav_CC
+    
+
 
 #csv_file_path = "/Users/jtlin/Documents/Project/Cascadia_LFE/Detections_S_small/cut_daily_PO.GOWB.csv"
 #csv = pd.read_csv(csv_file_path)
@@ -205,6 +214,7 @@ def batch_CC(template,target_keys):
 #-----cut detection tcs from daily mseed data-----
 # data_path = "/projects/amt/shared/cascadia_PO/"
 #data_path = "/Users/jtlin/Documents/Project/Cascadia_LFE/cascadia_"
+
 
 
 def make_template(csv_file_path,load=False):
@@ -313,18 +323,34 @@ def make_template(csv_file_path,load=False):
             hf.create_dataset('data/'+i,data=[data_Z,data_E,data_N]) #this is the raw data (no feature scaling) centered at arrival
             hf.close()
     #===file_hdf5 is done, no matter its loaded directly or re-cut from daily mseed===
-    hf = h5py.File(file_hdf5,'r')
-    y_min = 0.3
-    group_CC = 0.2
-    group = {}
-    group_rec = set()
+    #hf = h5py.File(file_hdf5,'r')
+#    y_min = 0.3
+#    group_CC = 0.2
+#    group = {}
+#    group_rec = set()
     time_1 = time.time()
     filt_csv = csv[csv['y']>=y_min]
-    for n_i,i in enumerate(filt_csv['id']):
-        print("current i=%s  (%d/%d) "%(i,n_i,len(filt_csv)))
-        print(" %d of data reduced"%(len(group_rec)))
-        print(" run time=",time.time()-time_1)
-        time_1 = time.time()
+    ncores = 16
+    print(' number of traces=%d, may take %f min to calculate...'%(len(filt_csv),(len(filt_csv)**2/2)*0.001/60/ncores ))
+    results = Parallel(n_jobs=ncores,verbose=10,backend='loky')(delayed(batch_CC)(n_i,i,filt_csv['id'],file_hdf5) for n_i,i in enumerate(filt_csv['id'])  )
+    group = {}
+    sav_CC = []
+    for res,cc in results:
+        group.update(res)
+        for k in cc.keys():
+            sav_CC.append(cc[k])
+    
+    sta = csv_file_path.split('.')[1]
+    np.save('CC_group_%s.npy'%(sta),group)
+    np.save('sav_CC_%s.npy'%(sta),sav_CC)
+    return
+#    for n_i,i in enumerate(filt_csv['id']):
+#        print("current i=%s  (%d/%d) "%(i,n_i,len(filt_csv)))
+#        print(" %d of data reduced"%(len(group_rec)))
+#        print(" run time=",time.time()-time_1)
+#        time_1 = time.time()
+#        batch_CC(n_i,i,filt_csv['id'],file_hdf5,group,group_rec)
+    '''
         for n_j,j in enumerate(filt_csv['id']):
             if n_j<=n_i:
                 continue # already calculated before
@@ -354,9 +380,8 @@ def make_template(csv_file_path,load=False):
                     tmp = roll_zeropad(np.array(hf['data/'+i]).reshape(-1),-int(0.5*shift)) + roll_zeropad(np.array(hf['data/'+j]).reshape(-1),int(0.5*shift))
                     tmp = tmp/max(np.abs(tmp))
                     group[n_i] = {'group':[n_i,n_j],'template':tmp}
-        
-    hf.close()
-    np.save('test_group.npy',group)
+    '''
+    #hf.close()
 
 
 
@@ -371,8 +396,31 @@ def run_loop(csv_file_path):
     print('Now in :',csv_file_path)
     make_template(csv_file_path,load=True)
 
-# parallel processing
-results = Parallel(n_jobs=8,verbose=0)(delayed(run_loop)(csv_file_path) for csv_file_path in csvs_file_path  )
 
 
+y_min = 0.2
+group_CC = 0.2
+# multi-processing is deployed only in the calculation, just loop each station
+for csv_file_path in csvs_file_path:
+    run_loop(csv_file_path)
+
+# parallel processing for each stations
+#results = Parallel(n_jobs=2,verbose=10)(delayed(run_loop)(csv_file_path) for csv_file_path in csvs_file_path  )
+
+
+
+# plotting results
+groups = np.load('CC_group_GOWB.npy',allow_pickle=True)
+groups = groups.item()
+CCs = np.load('sav_CC_GOWB.npy',allow_pickle=True)
+corr = np.ones([len(CCs),len(CCs)])
+n = len(CCs)
+for i in range(n):
+    corr[i,i+1:n] = CCs[i]
+    corr[i+1:n,i] = CCs[i]
+
+
+mask = np.triu(np.ones_like(corr, dtype=bool))
+sns.heatmap(corr, mask=mask,square=True,vmin=0,vmax=0.7, cbar_kws={"shrink": .5})
+plt.show()
 
