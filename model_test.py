@@ -133,6 +133,103 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,sr,std,valid=
         yield(batch_out,new_batch_target)
 
 
+'''
+def ZEN2inp(Z,E,N,epsilon):
+    # convert raw ZEN data to input feature
+    data_Z_sign = np.sign(Z)
+    data_E_sign = np.sign(E)
+    data_N_sign = np.sign(N)
+    data_Z_val = np.log(np.abs(Z)+epsilon)
+    data_E_val = np.log(np.abs(E)+epsilon)
+    data_N_val = np.log(np.abs(N)+epsilon)
+    data_inp = np.hstack([data_Z_val.reshape(-1,1),data_Z_sign.reshape(-1,1),
+                          data_E_val.reshape(-1,1),data_E_sign.reshape(-1,1),
+                          data_N_val.reshape(-1,1),data_N_sign.reshape(-1,1),])
+    return data_inp
+'''
+
+def inp2ZEN(data_inp,epsilon):
+    # reverse the input data (i.e. from the ZEN2inp function) to ZEN time series
+    Z = (np.exp(data_inp[:,0])-epsilon) * data_inp[:,1]
+    E = (np.exp(data_inp[:,2])-epsilon) * data_inp[:,3]
+    N = (np.exp(data_inp[:,4])-epsilon) * data_inp[:,5]
+    return Z,E,N
+    
+
+
+def make_confusion_plot(save_fig=None):
+    '''
+        To plot example of TP,FN,FP,TN
+        only use the function when you have TP_idx, FN_idx...., X and y loaded.
+    '''
+    fig = plt.figure()
+    props = dict(boxstyle='round', facecolor='white', alpha=0.7)
+    T = np.arange(1500)/100 # to second
+    plt.subplot(2,2,1) #for TP
+    tmpid = np.random.choice(TP_idx)
+    tmp_Z, tmp_E, tmp_N = inp2ZEN(X[tmpid],epsilon)
+    plt.plot(T,tmp_Z+1.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_E+2.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_N+3.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.text(0.5,1.4,'Z',fontsize=12,)
+    plt.text(0.5,2.4,'E',fontsize=12,)
+    plt.text(0.5,3.4,'N',fontsize=12,)
+    plt.text(7.3,3.3,'TP',fontsize=14,color=[1,0,0],bbox=props)
+    h1 = plt.plot(T,y[tmpid],'k',linewidth=1.5)
+    h2 = plt.plot(T,y_pred[tmpid],'b',linewidth=1.5)
+    plt.legend((h1[0],h2[0]),('True','Model'),loc=1)
+    plt.xlim([0,15]);plt.ylim([-0.2,3.8])
+    ax = plt.gca()
+    ax.tick_params(labelbottom=False)
+    ax.set_yticks([0,1])
+    plt.subplot(2,2,2) #for FN
+    tmpid = np.random.choice(FN_idx)
+    tmp_Z, tmp_E, tmp_N = inp2ZEN(X[tmpid],epsilon)
+    plt.plot(T,tmp_Z+1.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_E+2.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_N+3.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.text(7.3,3.3,'FN',fontsize=14,color=[1,0,0],bbox=props)
+    plt.plot(T,y[tmpid],'k',linewidth=1.5)
+    plt.plot(T,y_pred[tmpid],'b',linewidth=1.5)
+    plt.xlim([0,15]);plt.ylim([-0.2,3.8])
+    ax = plt.gca()
+    ax.tick_params(labelbottom=False,labelleft=False)
+    ax.set_yticks([0,1])
+    plt.subplot(2,2,3) #for FP
+    tmpid = np.random.choice(FP_idx)
+    tmp_Z, tmp_E, tmp_N = inp2ZEN(X[tmpid],epsilon)
+    plt.plot(T,tmp_Z+1.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_E+2.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_N+3.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.text(7.3,3.3,'FP',fontsize=14,color=[1,0,0],bbox=props)
+    plt.plot(T,y[tmpid],'k',linewidth=1.5)
+    plt.plot(T,y_pred[tmpid],'b',linewidth=1.5)
+    plt.xlim([0,15]);plt.ylim([-0.2,3.8])
+    plt.xlabel('Time (s)',fontsize=14,labelpad=0)
+    ax = plt.gca()
+    ax.set_yticks([0,1])
+    plt.subplot(2,2,4) #for TN
+    tmpid = np.random.choice(TN_idx)
+    tmp_Z, tmp_E, tmp_N = inp2ZEN(X[tmpid],epsilon)
+    plt.plot(T,tmp_Z+1.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_E+2.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.plot(T,tmp_N+3.2,'-',color=[0.7,0.7,0.7],linewidth=0.5)
+    plt.text(7.3,3.3,'TN',fontsize=14,color=[1,0,0],bbox=props)
+    plt.plot(T,y[tmpid],'k',linewidth=1.5)
+    plt.plot(T,y_pred[tmpid],'b',linewidth=1.5)
+    plt.xlim([0,15]);plt.ylim([-0.2,3.8])
+    plt.xlabel('Time (s)',fontsize=14,labelpad=0)
+    ax = plt.gca()
+    ax.set_yticks([0,1])
+    ax.tick_params(labelleft=False)
+    plt.subplots_adjust(left=0.05,top=0.95,right=0.97,bottom=0.1,wspace=0.14,hspace=0.12)
+    if save_fig:
+        plt.savefig(save_fig,dpi=300)
+        plt.show()
+    else:
+        plt.show()
+
+
 
 
 drop = 0
@@ -237,12 +334,13 @@ stds = [0.4] #std width
 
 # looping models
 for i,model_path in enumerate(models):
+    if i==0:
+        continue
     # load model architecture
     if drop:
         model = unet_tools.make_large_unet_drop(larges[i],sr,ncomps=3)
     else:
         model = unet_tools.make_large_unet(larges[i],sr,ncomps=3)
-    
     # load weights
     model.load_weights(model_path)
 
@@ -258,17 +356,22 @@ for i,model_path in enumerate(models):
     #sig_test_inds = np.hstack([sig_test_inds,sig_valid_inds])
     #noise_test_inds = np.hstack([noise_test_inds,noise_valid_inds])
 
+    '''
     # ========get testing data, this can be generated previously=========
     #my_data = my_data_generator(10000,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=False)  #when valid=True, want all the data, batch_size is automatically
-    my_data = my_data_generator(1,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=True)  #when valid=True, want all the data, batch_size is automatically
+    my_data = my_data_generator(100000,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=False)  #when valid=True, want all the data, batch_size is automatically
+    #my_data = my_data_generator(1,x_data,n_data,sig_test_inds,noise_test_inds,sr,std,valid=True)  #when valid=True, want all the data, batch_size is automatically
     # "i'll stop here"
     X,y = next(my_data)
-    
+    '''
     #np.save('X.npy',X)
-    np.save('y_all_valid.npy',y)
-    #import sys
-    #sys.exit()
-    #print('X,y=',X,y) 
+    #np.save('y_all_valid.npy',y)
+
+    # ========save the test data for faster loading next time========
+    #np.save('X_test_%s.npy'%(run_num),X)
+    #np.save('y_test_%s.npy'%(run_num),y)
+    X = np.load('X_test_%s.npy'%(run_num))
+    y = np.load('y_test_%s.npy'%(run_num))
     
     # model predictions
     y_pred = model.predict(X)
@@ -283,6 +386,7 @@ for i,model_path in enumerate(models):
     sav_acc = []
     sav_thres = []
     for thresh in threshs:
+        thresh = 0.1
         # turn 2D prediction to 1D labels LFE or noise depending on threshold
         #print('testing thres=%f'%(thresh))
         y_pred_TF = np.where(np.max(y_pred,axis=1) >= thresh, 1, 0)
@@ -306,6 +410,18 @@ for i,model_path in enumerate(models):
         sav_prec.append(prec)
         sav_acc.append(acc)
         sav_thres.append(thresh)
+        #----------make some plots------------
+        TP_idx = np.where((y_true==1) & (y_pred_TF==1))[0]
+        TN_idx = np.where((y_true==0) & (y_pred_TF==0))[0]
+        FP_idx = np.where((y_true==0) & (y_pred_TF==1))[0]
+        FN_idx = np.where((y_true==1) & (y_pred_TF==0))[0]
+        for nfig in range(50):
+            save_fig = './Figs_confusion/fig_%03d.png'%(nfig)
+            print('Start making figure:',nfig,save_fig)
+            make_confusion_plot(save_fig=save_fig)
+        import sys
+        sys.exit()
+        #-----------plot end------------------
 
 
     # calculate AUC, area under ROC curve
@@ -385,7 +501,7 @@ for i,model_path in enumerate(models):
                         tmp_TP += 1
                     else:
                         #tmp_FN += 1 # although it detect the LFE, but it's not at the right arrival time
-                        tmp_FP += 1 # although it detect the LFE, but it's not at the right arrival time
+                        tmp_FP += 1 # although it detect the LFE, but it's not at the right arrival time (detect LFE at the part where should be just noise)
 
         assert (tmp_TP + tmp_TN + tmp_FP + tmp_FN) == y.shape[0], "length different! something wrong"
         try:
