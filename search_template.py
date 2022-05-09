@@ -162,6 +162,18 @@ def cal_CCC(data1,data2):
     return maxCCC,lag-(len(data2)-1)
 
 
+def cal_CCC2(data1,data2):
+    """
+    A simplified version of cal_CCC which can takes non-normalized data1 and data2
+    """
+    data1 = (data1-np.mean(data1)) / (np.std(data1)*len(data1))
+    data2 = (data2-np.mean(data2)) / (np.std(data2))
+    tmpccf=signal.correlate(data1,data2,'full')
+    lag=tmpccf.argmax()
+    maxCCC=tmpccf[lag]
+    return maxCCC,lag-(len(data2)-1)
+
+
 def roll_zeropad(a, shift, axis=None):
     """
     Roll array elements along a given axis.
@@ -216,14 +228,67 @@ def roll_zeropad(a, shift, axis=None):
         return res
 
 
+def roll_zeropad3(a, shift, axis=None):
+    """
+    Same as the roll_zeropad. But roll the 3 component separately.
+    Inputs:
+    -------
+        a : 1D array
+            Where a = np.concatenate([Z,E,N]),
+        shift: int
+            Shifted points for Z, E and N.
+    Output:
+    -------
+        res: 1D array
+            With the same length of input a.
+            This is equivalent to np.concatenate(roll_zeropad(Z,shift), roll_zeropad(E,shift), roll_zeropad(N,shift))
+    """
+    l = len(a)//3
+    Z = a[:l]
+    E = a[l:2*l]
+    N = a[2*l:]
+    a1 = roll_zeropad(Z,shift)
+    a2 = roll_zeropad(E,shift)
+    a3 = roll_zeropad(N,shift)
+    return np.concatenate([a1,a2,a3])
+
+
 def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
-    # do CC calculations w.r.t. a template i.g. data1
-    # template is an np array
-    # loopable target_keys for target data
+    """
+    Do CC calculations w.r.t. a template i.g. data1
+    template is an np array, loopable target_keys for target data
+    
+    INPUTs
+    ------
+    n_i : int
+        The index of template in the (filtered)hdf5/csv detection file. For actual index, check the outer script that calls this function.
+    i : string like
+        The key of the template data from hdf5 file i.e. hf['data/'+i]) to get the data
+    target_keys : string like
+        The key of the target data from hdf5 file
+    search_params : dict
+        The searching parameters, only 'time_max'; 'group_max', 'group_CC' are taken in this function.
+        search_params = {
+            'time_max':1,        # maximum time span [year] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times
+            'group_max':50,     # stop matching when detecting more than N events in a same template
+            'group_max':10000,   # maximum number of calculation for each template.
+            'group_CC':0.2,      # threshold of template-target CC to be considered a group
+            'y_min':0.2,         # CNN pick threshold value
+            'group_percent':0.5, # at least N[0~1] overlap can be considered a group e.g. temp1=1, detc1=[1,3,5,6,7,9]. If temp2=2, detc2=[2,3,5,11], then len(detc2 in detc1)/len(detc1)=2/6, so temp2 is not in the group. This is not implemented yet!
+            'ncores':16,
+        }
+        
+    RETURNs
+    -------
+    group : dict
+        The key of the dict is the template index, which is the ith data from the (filtered)csv/hdf5 detection file.
+        The content of each key is the target index e.g. groups[n_i] = {'group': [1213, 1216, 1220, 1221, 1222, 1223, 1225] }
+    """
     ## ----------params input-------------
     group_CC = search_params['group_CC']
     time_max = search_params['time_max']
     group_max = search_params['group_max']
+    cal_max = search_params['cal_max']
     #-------------------------------------
     hf = h5py.File(file_hdf5,'r')
     template = np.array(hf['data/'+i]).reshape(-1)
@@ -237,6 +302,8 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
             continue
         if UTCDateTime(j.split('_')[-1])>Tmax:
             break # j is chronologically ordered, no need to search next j for this template
+        if n_j>=cal_max:
+            break # stop checking anymore
         if group!={}:
             if len(group[n_i]['group'])>=group_max:
                 break
@@ -244,7 +311,12 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
         data2_nor = norm_data(data2,pos=2)
         CC,shift = cal_CCC(data1_nor,data2_nor)
         #sav_CC[n_i].append(CC)
-        if CC>=group_CC:
+        if CC>=group_CC and np.abs(shift)<len(data2)//3:
+            # if shift greater than len(data2)//3 you are matching two different components
+            sh_target = roll_zeropad3(data2,shift) # after shift, calculate CC again
+            CCC2,shift2 = cal_CCC2(template,sh_target)
+            if not (max(np.abs(sh_target))!=0 and np.abs(shift2)<1):
+                continue # break this target
             #print("=============")
             #print(i,j)
             #print("CC=",CC)
@@ -392,7 +464,7 @@ def make_template(csv_file_path,search_params,load=False,pre_QC=True):
             hf = h5py.File(file_hdf5,'a')
             hf.create_dataset('data/'+i,data=[data_Z,data_E,data_N]) #this is the raw data (no feature scaling) centered at arrival
             hf.close()
-    #===file_hdf5 is done, no matter its loaded directly or re-cut from daily mseed===
+    #===file_hdf5 is done, no matter its loaded directly or re-cut and re-centered from daily mseed===
     #hf = h5py.File(file_hdf5,'r')
 #    y_min = 0.3
 #    group_CC = 0.2
@@ -400,7 +472,7 @@ def make_template(csv_file_path,search_params,load=False,pre_QC=True):
 #    group_rec = set()
     time_1 = time.time()
     filt_csv = csv[csv['y']>=y_min]
-    print(' number of traces=%d after y filter'%(len(filt_csv)))
+    print(' number of traces=%d after y>=%f filter'%(len(filt_csv),y_min))
     if pre_QC:
         QC_idx = []
         hf = h5py.File(file_hdf5,'r')
@@ -414,12 +486,13 @@ def make_template(csv_file_path,search_params,load=False,pre_QC=True):
     results = Parallel(n_jobs=ncores,verbose=10,backend='loky')(delayed(batch_CC)(n_i,i,filt_csv['id'],file_hdf5,search_params) for n_i,i in enumerate(filt_csv['id'])  )
     # collect the results from the above loops
     group = {}
+    group['template_keys'] = filt_csv['id']
+    group['template_idxs'] = {}
     #sav_CC = []
     for res in results:
-        group.update(res)
+        group['template_idxs'].update(res) #e.g. res = {0: {'group': [1, 3, 4, 5, 6]} }, for template idx=0, idx 1,3,4,5,6 are correlated.
         #for k in cc.keys():
         #    sav_CC.append(cc[k])
-    
     sta = csv_file_path.split('.')[1]
     np.save('CC_group_%s.npy'%(sta),group)
     #np.save('sav_CC_%s.npy'%(sta),sav_CC)
@@ -475,27 +548,125 @@ def run_loop(csv_file_path,search_params):
 
 
 
-csvs_file_path = "/Users/jtlin/Documents/Project/Cascadia_LFE/Detections_S_small"
+#csvs_file_path = "/Users/jtlin/Documents/Project/Cascadia_LFE/Detections_S_small"
+csvs_file_path = "/Users/jtlin/Documents/Project/Cas_LFE/results/Detections_S_small"
 #csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*GOWB*.csv")
 csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*.csv")
 csvs_file_path.sort()
 
 search_params = {
     'y_min':0.2,         # CNN pick threshold value
-    'group_CC':0.2,      # threshold of template-target CC to be considered a group
-    'group_percent':0.5, # at least N[0~1] overlap can be considered a group e.g. temp1=1, detc1=[1,3,5,6,7,9]. If temp2=2, detc2=[2,3,5,11], then len(detc2 in detc1)/len(detc1)=2/6, so temp2 is not in the group
-    'time_max':1,        # maximum time span [year] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times
-    'group_max':50,     # stop matching when detecting more than N events in a same template
+    'group_CC':0.2,      # threshold of template-target CC to be considered as a group
+    'group_percent':0.5, # at least N[0~1] overlap can be considered a group e.g. temp1=1, detc1=[1,3,5,6,7,9]. If temp2=2, detc2=[2,3,5,11], then len(detc2 in detc1)/len(detc1)=2/6, so temp2 is not in the group. This is not implemented yet!
+    'time_max':0.165,    # maximum time span [year] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times. 0.165yr = 60day
+    'group_max':100,     # stop matching when detecting more than N events in a same template
+    'cal_max':5000,     # maximum number of calculations for each template. Stop check after this number anyway.
     'ncores':16,
 }
 
-
+#----------start running here-------------
 # multi-processing is deployed only in the calculation, just loop each station
 for csv_file_path in csvs_file_path:
     run_loop(csv_file_path,search_params)
 
 # parallel processing for each stations
 #results = Parallel(n_jobs=2,verbose=10)(delayed(run_loop)(csv_file_path) for csv_file_path in csvs_file_path  )
+
+
+# plotting timeseries
+#groups = np.load('CC_group_GOWB.npy',allow_pickle=True)
+groups = np.load('CC_group_TWGB.npy',allow_pickle=True)
+groups = groups.item()
+#hf = h5py.File('./results/Detections_S_small/cut_daily_PO.GOWB.hdf5','r')
+hf = h5py.File('./results/Detections_S_small/cut_daily_PO.TWGB.hdf5','r')
+T = np.arange(4500)*0.01
+n_plot = 0
+props = dict(boxstyle='round', facecolor='white', alpha=0.7)
+for template_i in groups['template_idxs'].keys():
+    k = groups['template_keys'].iloc[template_i]
+    sav_t = [] # save repeating EQs time, first is the template
+    template_t = UTCDateTime(k.split('_')[-1])
+    sav_t.append(template_t)
+    targets_i = groups['template_idxs'][template_i]['group']
+    if len(targets_i)<5:
+        continue
+    template = np.array(hf['data/'+k]).reshape(-1)
+    fig, axs = plt.subplots(2,2,figsize=(8,5.5), gridspec_kw={'height_ratios': [2, 1]})
+    ax_merged = plt.subplot2grid((2, 2), (1, 0), colspan=2)
+    plt.subplot(2,2,1)
+    plt.title('Raw detections',fontsize=14)
+    idx = csv[csv['id']==k].idx_max_y
+    plt.plot(T,template/max(np.abs(template)),'r')
+#    plt.plot(T[idx],template[idx]/max(np.abs(template)),'bo')
+#    plt.plot(T[idx+1500],template[idx+1500]/max(np.abs(template)),'bo')
+#    plt.plot(T[idx+3000],template[idx+3000]/max(np.abs(template)),'bo')
+    plt.text(1,-2,'Z',va='center',bbox=props);plt.text(16,-2,'E',va='center',bbox=props);plt.text(31,-2,'N',va='center',bbox=props)
+    plt.subplot(2,2,2)
+    plt.title('Shift',fontsize=14)
+    plt.text(1,-2,'Z',va='center',bbox=props);plt.text(16,-2,'E',va='center',bbox=props);plt.text(31,-2,'N',va='center',bbox=props)
+    plt.plot(T,template/max(np.abs(template)),'r')
+    sum_target = np.zeros(len(template)) # stacked time series
+    num_stacks = 0 # number of waveforms that are stacked
+    for n,target_i in enumerate(targets_i):
+        kk = groups['template_keys'].iloc[target_i]
+        target_t = UTCDateTime(kk.split('_')[-1])
+        target = np.array(hf['data/'+kk]).reshape(-1)
+        target = target/max(np.abs(target)) #normalize
+        # calculate CCC
+        plt.subplot(2,2,1)
+        CCC,shift = cal_CCC2(template,target)
+        #------If the shift is greater than 1500 pts, that means you're matching two different components
+        plt.plot(T,target-n-1,'k',linewidth=0.5)
+        #plt.text(0,-n-1,'sh=%d'%(shift),fontsize=5,va='center')
+        plt.subplot(2,2,2)
+        sh_target = roll_zeropad3(target,shift)
+        CCC2,shift2 = cal_CCC2(template,sh_target)
+        # stack the data if it is not just zeros and the CC is basically zero lag after the first shifting
+        if max(np.abs(sh_target))!=0 and np.abs(shift2)<1 and CCC2>=0.2:
+            plt.plot(T,sh_target-n-1,'k',linewidth=0.5)
+            sum_target += (sh_target)
+            num_stacks += 1
+            sav_t.append(target_t)
+            plt.text(0,-n-1,'CC=%.2f'%(CCC2),fontsize=5,va='center')
+    plt.subplot(2,2,1)
+    plt.plot([15,15],[1,-n-3],color=[0.5,0.5,0.5])
+    plt.plot([30,30],[1,-n-3],color=[0.5,0.5,0.5])
+    plt.xlim([0,45])
+    plt.ylim([-n-3,1])
+    plt.xlabel('Time (s)',fontsize=12,labelpad=-1)
+    ax=plt.gca()
+    ax.tick_params(labelleft=False,pad=0,length=0,size=1)
+    plt.subplot(2,2,2)
+    #sum_target /= num_stacks
+    sum_target /= max(np.abs(sum_target))
+    plt.plot([15,15],[1,-n-3],color=[0.5,0.5,0.5])
+    plt.plot([30,30],[1,-n-3],color=[0.5,0.5,0.5])
+    plt.xlim([0,45])
+    plt.ylim([-n-3,1])
+    plt.xlabel('Time (s)',fontsize=12,labelpad=-1)
+    ax=plt.gca()
+    ax.tick_params(labelleft=False,pad=0,length=0,size=1)
+    #------plot stacking tcs------
+    ax_merged.plot(T,template/max(np.abs(template)),'r')
+    ax_merged.text(0.5,0.1,'raw template')
+    ax_merged.plot(T,sum_target-2.1,'b')
+    CCC3,shift3 = cal_CCC2(template,sum_target)
+    ax_merged.text(0.5,-2,'stack CC=%.2f'%(CCC3))
+    ax_merged.plot([15,15],[-3.1,1],color=[0.5,0.5,0.5])
+    ax_merged.plot([30,30],[-3.1,1],color=[0.5,0.5,0.5])
+    ax_merged.text(7.5,0.5,'Z',va='center',bbox=props);ax_merged.text(22.5,0.5,'E',va='center',bbox=props);ax_merged.text(37.5,0.5,'N',va='center',bbox=props)
+    ax_merged.set_xlabel('Time (s)',fontsize=14,labelpad=0)
+    ax_merged.tick_params(labelleft=False,pad=0,length=0,size=1)
+    ax_merged.set_xlim([0,45])
+    ax_merged.set_ylim([-3.1,1])
+    ax_merged.set_title('Shift and stack (N=%d)'%(num_stacks))
+    plt.suptitle('Template: %s'%(k),fontsize=14)
+    plt.subplots_adjust(left=0.08,top=0.88,right=0.97,bottom=0.1,wspace=0.05,hspace=0.25)
+    plt.show()
+    n_plot += 1
+    if n_plot>5:
+        break
+
 
 
 '''

@@ -18,15 +18,19 @@ EQinfo = np.load('sav_family_phases.npy',allow_pickle=True)
 EQinfo = EQinfo.item()
 
 #LFE detection file
-detcFile = 'total_mag_detect_0000_cull_NEW.txt' 
-#detcFile = 'test.txt' 
+detcFile = 'total_mag_detect_0000_cull_NEW.txt'
 
-#seconds before and after arrival
+#cut seconds before and after arrival
 timeL = 15
 timeR = 15
 sampl = 100 #sampling rate
+"""
+Below define the data location and the channel (e.g. HH, BH, EH) for each station
+"""
+#In PO, all stations are HH
 dir1 = '/projects/amt/shared/cascadia_PO' # .mseed files are in PO or CN directory
 net1 = 'PO'
+#In CN, stations channels are different, below provide the channel list.
 dir2 = '/projects/amt/shared/cascadia_CN' 
 net2 = 'CN'
 CN_list = {'GOBB':'EH',
@@ -42,12 +46,23 @@ CN_list = {'GOBB':'EH',
 
 
 def data_process(filePath,sampl=sampl):
-    '''
+    """
     load and process daily .mseed data
-    filePath: absolute path of .mseed file.
-    sampl: sampling rate
     other processing such as detrend, taper, filter are hard coded in the script, modify them accordingly
-    '''
+    
+    Inputs
+    ======
+    filePath: str
+        absolute path of .mseed file.
+    
+    sampl: float
+        sampling rate
+        
+    Outputs
+    =======
+    D: obspy stream
+    
+    """
     if not os.path.exists(filePath):
         return ''
     D = obspy.read(filePath)
@@ -65,11 +80,19 @@ def data_process(filePath,sampl=sampl):
 
 
 def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102")):
-    '''
+    """
     cut data from one or multiple .mseed
+    
+    Inputs
+    ======
     Data1, Data2: Obspy stream 
     t1, t2: start and end time of the timeseries
-    '''
+    
+    Outputs
+    =======
+    return: numpy array
+    
+    """
     if Data2 == '':
         #DD = Data1.slice(starttime=t1,endtime=t2) #slice sometime has issue when data has gap or no data at exact starttime 
         DD = Data1.copy()
@@ -87,15 +110,9 @@ def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102"
 
 
 
-
-
-
-
-currentFam = '-1' #current family ID
+currentFam = '-1' #current family ID, when changing ID, output .h5 file.
 sta_P1 = {} #this record Phase1 (P wave)
 sta_P2 = {} # Phase2 (S wave?)
-
-num = 0
 
 #Use these hashes so that you can re-use the daily mseed data instead of load them everytime
 prev_dataZ = {} #previous data with structure = {'file1':{'name':filePath,'data':obspySt}, 'file2':{'name':filePath,'data':obspySt}}
@@ -103,7 +120,6 @@ prev_dataE = {} #in E comp
 prev_dataN = {} #in Z comp
 with open(detcFile,'r') as IN1:
     for line in IN1.readlines():
-        num += 1
         line = line.strip()
         print('Line=',line)
         ID = line.split()[0] #family ID
@@ -113,20 +129,19 @@ with open(detcFile,'r') as IN1:
         OT = OT + HH + SS #detected origin time. always remember!!! this is not the real OT. The shifted time in the sav_family_phases.npy have been corrected accordingly.
         Mag = float(line.split()[4])
         #if Mag<2.49:
-        #    continue
-
-        #if new ID, reset everything
+        #    continue #so that only save large LFEs for testing
+        #If changing to new ID, save existing results and reset everything for the next run.
         if ID != currentFam:
             print('-change ID from:',currentFam,ID)
             #print('sta_P1=',sta_P1)
             #print('sta_P1 key=',sta_P1.keys())
             for name in sta_P1.keys():
-                #save the h5py data
+                #save the P wave to h5py data
                 h5f = h5py.File('./Data/ID_%s_%s_P.h5'%(currentFam,name),'w')
                 h5f.create_dataset('waves',data=sta_P1[name])
                 h5f.close()
             for name in sta_P2.keys():
-                #save the h5py data
+                #save the S wave to h5py data
                 h5f = h5py.File('./Data/ID_%s_%s_S.h5'%(currentFam,name),'w')
                 h5f.create_dataset('waves',data=sta_P2[name])
                 h5f.close()
@@ -134,32 +149,35 @@ with open(detcFile,'r') as IN1:
             currentFam = ID
             sta_P1 = {}
             sta_P2 = {}
-            
-        #if num>950:
-        #     continue
 
-        #for this family ID, check arrivals from EQinfo
+        #for this family ID, check arrivals (for each station) from EQinfo
         for sta in EQinfo[ID]['sta'].keys():
-            P1 = EQinfo[ID]['sta'][sta]['P1'] #Phase 1
-            P2 = EQinfo[ID]['sta'][sta]['P2'] #Phase 2
+            P1 = EQinfo[ID]['sta'][sta]['P1'] #Phase 1 (P)
+            P2 = EQinfo[ID]['sta'][sta]['P2'] #Phase 2 (S)
 
+            """
+            Define where to find the data, only search data in CN and PO here.
+            Note there are some data in C8 too. modify below to find the corrected path
+            """
             #some data are in cascadia_CN
             if sta in CN_list:
                 dataDir = dir2
                 net = net2
                 comp = CN_list[sta]
-            else:
+            else: #otherwist look for cascadia_PO, and if data not found, data_process below will just return empty string.
                 dataDir = dir1
                 net = net1
                 comp = 'HH' #PO stations are always HH
 
             #print('station:%s'%(sta))
-
+            """
+            Start processing P wave data
+            """
             if P1 != -1:
                 arr = OT+P1
-                t1 = arr - timeL
-                t2 = arr + timeR
-                #locate the file, read the file
+                t1 = arr - timeL # cut timeseries start time
+                t2 = arr + timeR # cut timeseries end time. Note that t1 and t2 may across +1 day.
+                #locate the file, read the file. If the file does not exist, the following data_process will return empty string.
                 #loc is always empty, comps are always comp[ENZ]
                 t1_fileZ = dataDir+'/'+t1.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'Z.mseed'
                 t1_fileE = dataDir+'/'+t1.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
@@ -168,7 +186,7 @@ with open(detcFile,'r') as IN1:
                 t2_fileE = dataDir+'/'+t2.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
                 t2_fileN = dataDir+'/'+t2.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'N.mseed'
                 
-                #determine if you need to reload new data
+                #Determine if you need to reload new data
                 if sta in prev_dataZ:
                     #check if the current and previous are same
                     if t1_fileZ != prev_dataZ[sta]['file1']['name']:
@@ -198,7 +216,7 @@ with open(detcFile,'r') as IN1:
                     #print('prev_dataZ=',prev_dataZ)
                     if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
                         #continue #either Z,E or N file are missing
-                        pass #should go test S phase
+                        pass #should go to S phase
                     else:
                         #print(' --Begin cut from',t1_fileZ)
                         D_Z = data_cut(prev_dataZ[sta]['file1']['data'],Data2='',t1=t1,t2=t2)
@@ -243,7 +261,10 @@ with open(detcFile,'r') as IN1:
 
                 #print('  --sta:%5s %s'%(sta,arr.isoformat()))
             #continue #do not go S wave
-
+            
+            """
+            Start processing S wave data, this is basically the same as processing P wave above
+            """
             if P2 != -1:
                 arr = OT+P2
                 t1 = arr - timeL
@@ -322,7 +343,6 @@ with open(detcFile,'r') as IN1:
 
                 #print('  --sta:%5s %s'%(sta,arr.isoformat()))
     
-
 #save the last family
 for name in sta_P1.keys():
     #save the h5py data
