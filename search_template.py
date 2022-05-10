@@ -255,8 +255,8 @@ def roll_zeropad3(a, shift, axis=None):
 
 def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
     """
-    Do CC calculations w.r.t. a template i.g. data1
-    template is an np array, loopable target_keys for target data
+    Run CC calculations w.r.t. a template waveform i.e. hf['data/'+i]) yields the template data
+    Template is an 3-component np array. target_keys is list/array loopable for target data i.e. hf['data/'+target_keys[0]]) yields the 1st target data
     
     INPUTs
     ------
@@ -269,7 +269,7 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
     search_params : dict
         The searching parameters, only 'time_max'; 'group_max', 'group_CC' are taken in this function.
         search_params = {
-            'time_max':1,        # maximum time span [year] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times
+            'time_max':30,        # maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times
             'group_max':50,     # stop matching when detecting more than N events in a same template
             'group_max':10000,   # maximum number of calculation for each template.
             'group_CC':0.2,      # threshold of template-target CC to be considered a group
@@ -296,7 +296,7 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
     #sav_CC = {n_i:[]} #save all the CC for checking
     data1_nor = norm_data(template,pos=1) #normalization for CC calculation
     T0 = UTCDateTime(i.split('_')[-1])
-    Tmax = T0 + (time_max*365*86400) # year to sec
+    Tmax = T0 + (time_max*86400) # day to sec
     for n_j,j in enumerate(target_keys):
         if n_j<=n_i:
             continue
@@ -313,9 +313,11 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
         #sav_CC[n_i].append(CC)
         if CC>=group_CC and np.abs(shift)<len(data2)//3:
             # if shift greater than len(data2)//3 you are matching two different components
-            sh_target = roll_zeropad3(data2,shift) # after shift, calculate CC again
-            CCC2,shift2 = cal_CCC2(template,sh_target)
-            if not (max(np.abs(sh_target))!=0 and np.abs(shift2)<1):
+            sh_target = roll_zeropad3(data2,shift) # after shifting the target, calculate the CC again
+            CC2,shift2 = cal_CCC2(template,sh_target)
+            #if not (max(np.abs(sh_target))!=0 and np.abs(shift2)<1):
+            # also consider the CC after shift(apdding zero shift)
+            if not (max(np.abs(sh_target))!=0 and np.abs(shift2)<1 and CC2>=group_CC ):
                 continue # break this target
             #print("=============")
             #print(i,j)
@@ -324,6 +326,9 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
             # create a new group or merge into the existing group
             if n_i in group:
                 group[n_i]['group'].append(n_j)
+                group[n_i]['shift'].append(shift)
+                group[n_i]['CC1'].append(CC)
+                group[n_i]['CC2'].append(CC2)
                 #tmp = group[n_i]['template']
                 #_,shift = cal_CCC(tmp,data2_nor) #note that to save calculation, tmp is not normalized. i.e. only want shift here
                 #tmp = roll_zeropad(tmp,-round((1/len(group[n_i]['group']))*shift)) + roll_zeropad(data2/np.max(np.abs(data2)),round((1-1/len(group[n_i]['group']))*shift))
@@ -335,7 +340,7 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
                 #tmp = tmp/np.max(np.abs(tmp))
                 #group[n_i] = {'group':[n_i,n_j],'template':tmp}
                 #group[n_i] = {'group':[n_i,n_j],'template':[template,data2],'CC':[1,CC]}
-                group[n_i] = {'group':[n_j]}
+                group[n_i] = {'group':[n_j], 'shift':[shift], 'CC1':[CC], 'CC2':[CC2]}
     hf.close()
     return group #,sav_CC
     
@@ -538,9 +543,8 @@ def make_template(csv_file_path,search_params,load=False,pre_QC=True):
 
 
 
-
-
 def run_loop(csv_file_path,search_params):
+    # loop each csv file
     print('-----------------------------')
     print('Now in :',csv_file_path)
     make_template(csv_file_path,search_params,load=True,pre_QC=True) #before looping through all traces, QC again
@@ -550,7 +554,7 @@ def run_loop(csv_file_path,search_params):
 
 #csvs_file_path = "/Users/jtlin/Documents/Project/Cascadia_LFE/Detections_S_small"
 csvs_file_path = "/Users/jtlin/Documents/Project/Cas_LFE/results/Detections_S_small"
-#csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*GOWB*.csv")
+csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*GOWB*.csv")
 csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*.csv")
 csvs_file_path.sort()
 
@@ -558,9 +562,10 @@ search_params = {
     'y_min':0.2,         # CNN pick threshold value
     'group_CC':0.2,      # threshold of template-target CC to be considered as a group
     'group_percent':0.5, # at least N[0~1] overlap can be considered a group e.g. temp1=1, detc1=[1,3,5,6,7,9]. If temp2=2, detc2=[2,3,5,11], then len(detc2 in detc1)/len(detc1)=2/6, so temp2 is not in the group. This is not implemented yet!
-    'time_max':0.165,    # maximum time span [year] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times. 0.165yr = 60day
+    'time_max':30,    # maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times.
     'group_max':100,     # stop matching when detecting more than N events in a same template
-    'cal_max':5000,     # maximum number of calculations for each template. Stop check after this number anyway.
+    'cal_max':3000,     # maximum number of calculations for each template. Stop check after this number anyway.
+    'xstation':{'time_range':15, 'n_percent_station':0.5},   # Cross station check. For each arrival, continue to process if n% of stations  have detections within the time_range
     'ncores':16,
 }
 
@@ -573,12 +578,13 @@ for csv_file_path in csvs_file_path:
 #results = Parallel(n_jobs=2,verbose=10)(delayed(run_loop)(csv_file_path) for csv_file_path in csvs_file_path  )
 
 
-# plotting timeseries
-#groups = np.load('CC_group_GOWB.npy',allow_pickle=True)
-groups = np.load('CC_group_TWGB.npy',allow_pickle=True)
+#===== plotting timeseries this is just to make some demo for checking======
+groups = np.load('CC_group_GOWB.npy',allow_pickle=True)
+#groups = np.load('CC_group_TWGB.npy',allow_pickle=True)
 groups = groups.item()
-#hf = h5py.File('./results/Detections_S_small/cut_daily_PO.GOWB.hdf5','r')
-hf = h5py.File('./results/Detections_S_small/cut_daily_PO.TWGB.hdf5','r')
+hf = h5py.File('./results/Detections_S_small/cut_daily_PO.GOWB.hdf5','r')
+#hf = h5py.File('./results/Detections_S_small/cut_daily_PO.TWGB.hdf5','r')
+csv = pd.read_csv('./results/Detections_S_small/cut_daily_PO.GOWB.csv')
 T = np.arange(4500)*0.01
 n_plot = 0
 props = dict(boxstyle='round', facecolor='white', alpha=0.7)
@@ -606,7 +612,7 @@ for template_i in groups['template_idxs'].keys():
     plt.text(1,-2,'Z',va='center',bbox=props);plt.text(16,-2,'E',va='center',bbox=props);plt.text(31,-2,'N',va='center',bbox=props)
     plt.plot(T,template/max(np.abs(template)),'r')
     sum_target = np.zeros(len(template)) # stacked time series
-    num_stacks = 0 # number of waveforms that are stacked
+    num_stacks = 0 # number of waveforms stacked
     for n,target_i in enumerate(targets_i):
         kk = groups['template_keys'].iloc[target_i]
         target_t = UTCDateTime(kk.split('_')[-1])
@@ -663,8 +669,18 @@ for template_i in groups['template_idxs'].keys():
     plt.suptitle('Template: %s'%(k),fontsize=14)
     plt.subplots_adjust(left=0.08,top=0.88,right=0.97,bottom=0.1,wspace=0.05,hspace=0.25)
     plt.show()
+    plt.figure()
+    plt.subplot(2,1,1)
+    plt.plot(template/max(np.abs(template)),'k')
+    plt.plot(sum_target,'r',linewidth=0.7)
+    plt.title('CC=%f'%(CCC3))
+    plt.subplot(2,1,2)
+    residual = template/max(np.abs(template))-sum_target
+    plt.plot(residual)
+    plt.title('std=%f'%(np.std(residual)))
+    plt.show()
     n_plot += 1
-    if n_plot>5:
+    if n_plot>10:
         break
 
 
