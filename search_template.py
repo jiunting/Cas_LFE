@@ -17,15 +17,47 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import obspy
 from obspy import UTCDateTime
+from obspy.signal.cross_correlation import correlate_template
 import os,sys, time
 import glob
 from numba import jit
 from joblib import Parallel, delayed
 import seaborn as sns
+from typing import TypedDict, Dict
+
+
+
+
+class XstationParams(TypedDict):
+    time_range: float # Other stations with arrival within this time range will be considered
+    n_stations: int   # Consider a template is valid if other (self not included) n stations also have the same arrival (defined by the above time range)
+
+class SearchParams(TypedDict):
+    y_min: float       # CNN picker threshold value (select data with y>=y_min)
+    group_CC: float    # threshold of template-target CC to be considered as a group (from 0~1)
+    time_max: float    # maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times.
+    group_max: int     # stop matching when detecting more than N events in a same template
+    cal_max: int       # maximum number of calculations for each template. Stop check after this number anyway.
+    x_station: XstationParams # Cross station checker. See XstationParams for definition
+    ncores: int        # cpus
+
+
+#=========== Example default values==============
+search_params: SearchParams = {
+    'y_min':0.2,
+    'group_CC':0.2,
+    'time_max':30,
+    'group_max':100,
+    'cal_max':3000,
+    'x_station':{'time_range':15, 'n_stations':2},
+    'ncores':16,
+}
+#============================================
+
 
 
 #--- process daily data
-def data_process(filePath,sampl=100):
+def data_process(filePath: str, sampl: int=100):
     '''
         load and process daily .mseed data
         filePath: absolute path of .mseed file.
@@ -50,7 +82,7 @@ def data_process(filePath,sampl=100):
     D.trim(starttime=t1, endtime=t2, nearest_sample=True, pad=True, fill_value=0)
     return D
     
-    
+
 def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102")):
     '''
         cut data from one or multiple .mseed, return numpy array
@@ -73,11 +105,10 @@ def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102"
     #assert len(DD[0].data)==1500, "cut data not exactly 3001 points"
     return DD[0].data
 
-from obspy.signal.cross_correlation import correlate_template
 
 def CCC_QC(data1,data2):
     #cross-correlation "Coef" cunction for QC
-    CCCF=correlate_template(data1,data2)
+    CCCF = correlate_template(data1,data2)
     return np.max(np.abs(CCCF))
 
 def QC(data,Type='data'):
@@ -118,28 +149,6 @@ def QC(data,Type='data'):
             return False
     return True
 
-
-
-'''
-def cal_CCC(data1,data2):
-    #cross-correlation "Coef" cunction, return the max CC
-    from obspy.signal.cross_correlation import correlate_template
-    CCCF=correlate_template(data1,data2)
-    return np.max(np.abs(CCCF))
-
-def cal_CCC(data1,data2):
-    #calculate max CC, and its lag idx
-    tmpccf=signal.correlate(data1,data2,'full')
-    auto1=signal.correlate(data1,data1,'full')
-    auto2=signal.correlate(data2,data2,'full')
-    tmpccf=tmpccf/np.sqrt(np.max(auto1)*np.max(auto2))
-    return tmpccf
-    maxCCC=np.max(tmpccf)
-    lag=tmpccf.argmax()
-    #midd = len(a)-1  #length of the second a, at this idx, refdata align with target data
-    shft = lag-(len(data2)-1) # the shift pts w.r.s to the data1 i.e. (data1,np.roll(data2,shft)) yields max CC
-    return maxCCC,shft
-'''
 
 @jit(nopython=True)
 def norm_data(data,pos=1):
@@ -359,11 +368,11 @@ def batch_CC(n_i,i,target_keys,file_hdf5,search_params):
 
 
 
-def make_template(csv_file_path,search_params,load=False,pre_QC=True):
+def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: Dict[str, pd.Series], load: bool=False, pre_QC: bool=True):
     '''
-        read the arrival from csv then
-            load=False:  cut time series from the daily data centered on the arrival time
-            load=True:   read the time series directly from the .h5py file
+        Read the arrival from csv then
+            load=False:  Cut time series from the daily data centered on the arrival time
+            load=True:   Read the time series directly from the .h5py file
     '''
     ## -----build-in params for timeseries cut (only when load=False)------
     sampl = 100
@@ -470,32 +479,44 @@ def make_template(csv_file_path,search_params,load=False,pre_QC=True):
             hf.create_dataset('data/'+i,data=[data_Z,data_E,data_N]) #this is the raw data (no feature scaling) centered at arrival
             hf.close()
     #===file_hdf5 is done, no matter its loaded directly or re-cut and re-centered from daily mseed===
+    net_sta = csv_file_path.split('/')[-1].split('_')[-1].replace('.csv','')
     #hf = h5py.File(file_hdf5,'r')
-#    y_min = 0.3
-#    group_CC = 0.2
-#    group = {}
-#    group_rec = set()
-    time_1 = time.time()
+    #y_min = 0.3
+    #group_CC = 0.2
+    #group = {}
+    #group_rec = set()
+    #time_1 = time.time()
     filt_csv = csv[csv['y']>=y_min]
     print(' number of traces=%d after y>=%f filter'%(len(filt_csv),y_min))
+    assert len(filt_csv)==len(dect_T_all[net_sta]), "length of filt_csv and dect_T do not match!"
     if pre_QC:
         QC_idx = []
         hf = h5py.File(file_hdf5,'r')
         results = Parallel(n_jobs=ncores,verbose=0,backend='loky')(delayed(QC)(np.array(hf['data/'+tmp_id]).reshape(-1)) for idx,tmp_id in enumerate(filt_csv['id']) )
         results = np.array(results)
-        QC_idx = np.where(results==True)
+        QC_idx = np.where(results==True)[0]
         hf.close()
         filt_csv = filt_csv.iloc[QC_idx]
         print(' number of traces=%d after QC filter'%(len(filt_csv)))
+    else:
+        QC_idx = None #None is everything
+    #------------------------another filter xstation check-------------------------
+    # If QC above, use the available QC index
+    # Note that "use_idx" is the index used by dect_T_all[net_sta] i.e. after y filter, not after QC
+    results = dect_in_others(net_sta, search_params['x_station'], dect_T_all, use_idx=QC_idx)
+    assert len(results)==len(filt_csv), "length of the idx do not match! filt_csv[results] will be wrong!"
+    print(' number of traces=%d after Xstation check'%(sum(results)))
+    filt_csv = filt_csv[results]
+    #------------------------------------------------------------------------------
     print(' number of traces=%d, may take maximum %f min to calculate...'%(len(filt_csv),(len(filt_csv)**2/2)*0.01/60/ncores ))
     results = Parallel(n_jobs=ncores,verbose=10,backend='loky')(delayed(batch_CC)(n_i,i,filt_csv['id'],file_hdf5,search_params) for n_i,i in enumerate(filt_csv['id'])  )
-    # collect the results from the above loops
+    # collect the results from the above calucation
     group = {}
     group['template_keys'] = filt_csv['id']
     group['template_idxs'] = {}
     #sav_CC = []
     for res in results:
-        group['template_idxs'].update(res) #e.g. res = {0: {'group': [1, 3, 4, 5, 6]} }, for template idx=0, idx 1,3,4,5,6 are correlated.
+        group['template_idxs'].update(res) #e.g. res = {0: {'group': [1, 3, 4, 5, 6]}, 'shift':[519, 289, 316, 1084, 46], 'CC1':[.....], 'CC2':[.....] }, for template idx=0, idx 1,3,4,5,6 are correlated.
         #for k in cc.keys():
         #    sav_CC.append(cc[k])
     sta = csv_file_path.split('.')[1]
@@ -543,36 +564,149 @@ def make_template(csv_file_path,search_params,load=False,pre_QC=True):
 
 
 
-def run_loop(csv_file_path,search_params):
-    # loop each csv file
-    print('-----------------------------')
-    print('Now in :',csv_file_path)
-    make_template(csv_file_path,search_params,load=True,pre_QC=True) #before looping through all traces, QC again
+def dect_time(file_path: str, search_params: SearchParams, is_catalog: bool=False, EQinfo: str=None) -> np.ndarray:
+    """
+    Get detection time for 1). ML detection in .csv file or 2). catalog file
+    
+    INPUTs
+    ======
+    file_path: str
+        Path of the detection file
+    is_catalog: bool
+        Input is catalog or not
+    EQinfo: str
+        Path of the EQinfo file i.e. "sav_family_phases.npy"
+    
+    OUTPUTs
+    =======
+    sav_OT: np.array[datetime] or None if empty detection
+        Detection time in array. For ML detection, time is the arrival at the station. For catalog, time is the origin time
+    
+    EXAMPLEs
+    ========
+    #T1 = dect_time('./Data/total_mag_detect_0000_cull_NEW.txt',search_params,True,'./Data/sav_family_phases.npy')  #for catalog
+    #T2 = dect_time('./results/Detections_S_small/cut_daily_PO.GOWB.csv',search_params)                             # for ML detection output
+    """
+    if is_catalog:
+        EQinfo = np.load(EQinfo,allow_pickle=True) #Note! detection file has a shift for each family
+        EQinfo = EQinfo.item()
+        sav_OT = []
+        with open(file_path,'r') as IN1:
+            for line in IN1.readlines():
+                line = line.strip()
+                ID = line.split()[0] #family ID
+                OT = UTCDateTime('20'+line.split()[1]) #YYMMDD
+                HH = int(line.split()[2])*3600
+                SS = float(line.split()[3])
+                OT = OT + HH + SS + EQinfo[ID]['catShift'] #detected origin time
+                sav_OT.append(OT.datetime)
+        sav_OT.sort()
+        return pd.Series(sav_OT)
+        #sav_OT = np.array(sav_OT)
+        #return sav_OT
+    else:
+        csv = pd.read_csv(file_path)
+        if len(csv)==0:
+            return None
+        net_sta = file_path.split('/')[-1].split('_')[-1].replace('.csv','')
+        prepend = csv.iloc[0].id.split('_')[0]
+        T = pd.to_datetime(csv[csv['y']>=search_params['y_min']].id,format=prepend+'_%Y-%m-%dT%H:%M:%S.%f')
+        T.reset_index(drop=True, inplace=True) #reset the keys e.g. [1,5,6,10...] to [0,1,2,3,...]
+        return T
 
 
+
+
+def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dict[str, pd.Series], use_idx: np.ndarray = None) -> np.ndarray:
+    """
+    For a given time, check if other stations also have arrival at the same time
+    
+    INPUTs
+    ======
+    self_net_sta: str
+        Self name/key of the dect_T_all to be checked.
+    use_idx: np.ndarray
+        Index to be used for time checking. None = everything.
+    
+    OUTPUTs
+    =======
+    res: np.array
+        1). If use_idx is None/unspecified, return array of bool values with the same length of dect_T_all[self_net_sta]
+                so one can use: dect_T_all[self_net_sta][res] directly.
+        2). If given use_idx, return array of bool values with the same length of dect_T_all[self_net_sta][use_idx]
+                This is because the time has been filtered before the function called,
+                i.e. filt_t = dect_T_all[self_net_sta][use_idx], so one can use filt_t[res] directly.
+    """
+    T_self = dect_T_all[self_net_sta] # self
+    res = [False] * len(T_self)
+    res_n = [0] * len(T_self) # number of other stations have same arrival
+    if use_idx is None:
+        # use all the idx if use_idx is unspecified
+        for n_t,t in enumerate(T_self):
+            # loop through every stations
+            for ksta in dect_T_all.keys():
+                if ksta == self_net_sta:
+                    continue
+                T_other = dect_T_all[ksta]
+                if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
+                    #if any detection is within the range, sum would be >=1 (==True)
+                    res_n[n_t] += 1
+                    if res_n[n_t] >= x_station['n_stations']:
+                        res[n_t] = True
+                        continue # continue to next t
+    else:
+        #total_idx = np.arange(len(T_self))
+        #remain_idx = np.setxor1d(total_idx,skip_idx)
+        for n_t in use_idx:
+            t = T_self[n_t]
+            # for this time, loop through every stations
+            for ksta in dect_T_all.keys():
+                if ksta == self_net_sta:
+                    continue
+                T_other = dect_T_all[ksta]
+                if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
+                    #if any detection is within the range, sum would be >=1 (==True)
+                    res_n[n_t] += 1
+                    if res_n[n_t] >= x_station['n_stations']:
+                        res[n_t] = True
+                        continue # continue to next t
+        res = np.array(res)[use_idx]
+    return np.array(res)
+
+#res2 = dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all, np.array(range(500)))
+
+
+#def run_loop(csv_file_path,search_params):
+#    # loop each csv file
+#    print('-----------------------------')
+#    print('Now in :',csv_file_path)
+#    make_template(csv_file_path,search_params,load=True,pre_QC=True) #before looping through all traces, QC again
 
 
 #csvs_file_path = "/Users/jtlin/Documents/Project/Cascadia_LFE/Detections_S_small"
 csvs_file_path = "/Users/jtlin/Documents/Project/Cas_LFE/results/Detections_S_small"
-csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*GOWB*.csv")
+#csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*GOWB*.csv")
 csvs_file_path = glob.glob(csvs_file_path+"/"+"cut_daily_*.csv")
 csvs_file_path.sort()
 
-search_params = {
-    'y_min':0.2,         # CNN pick threshold value
-    'group_CC':0.2,      # threshold of template-target CC to be considered as a group
-    'group_percent':0.5, # at least N[0~1] overlap can be considered a group e.g. temp1=1, detc1=[1,3,5,6,7,9]. If temp2=2, detc2=[2,3,5,11], then len(detc2 in detc1)/len(detc1)=2/6, so temp2 is not in the group. This is not implemented yet!
-    'time_max':30,    # maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times.
-    'group_max':100,     # stop matching when detecting more than N events in a same template
-    'cal_max':3000,     # maximum number of calculations for each template. Stop check after this number anyway.
-    'xstation':{'time_range':15, 'n_percent_station':0.5},   # Cross station check. For each arrival, continue to process if n% of stations  have detections within the time_range
-    'ncores':16,
-}
+#search_params = {
+#    'y_min':0.2,         # CNN pick threshold value
+#    'group_CC':0.2,      # threshold of template-target CC to be considered as a group
+#    #'group_percent':0.5, # at least N[0~1] overlap can be considered a group e.g. temp1=1, detc1=[1,3,5,6,7,9]. If temp2=2, detc2=[2,3,5,11], then len(detc2 in detc1)/len(detc1)=2/6, so temp2 is not in the group. This is not implemented yet!
+#    'time_max':30,    # maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times.
+#    'group_max':100,     # stop matching when detecting more than N events in a same template
+#    'cal_max':3000,     # maximum number of calculations for each template. Stop check after this number anyway.
+#    'xstation':{'time_range':15, 'n_percent_station':0.5},   # Cross station check. For each arrival, continue to process if n% of stations  have detections within the time_range
+#    'ncores':16,
+#}
 
 #----------start running here-------------
 # multi-processing is deployed only in the calculation, just loop each station
+cat_T = dect_time('./Data/total_mag_detect_0000_cull_NEW.txt',search_params,True,'./Data/sav_family_phases.npy') #for catalog
+dect_T_all = {csv_file_path.split('_')[-1].replace('.csv',''): res for csv_file_path in csvs_file_path if (res := dect_time(csv_file_path,search_params)) is not None} # for ML detections
 for csv_file_path in csvs_file_path:
-    run_loop(csv_file_path,search_params)
+    make_template(csv_file_path,search_params,dect_T_all,load=True,pre_QC=True)
+#    run_loop(csv_file_path,search_params)
 
 # parallel processing for each stations
 #results = Parallel(n_jobs=2,verbose=10)(delayed(run_loop)(csv_file_path) for csv_file_path in csvs_file_path  )
