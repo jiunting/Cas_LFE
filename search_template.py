@@ -19,6 +19,7 @@ import obspy
 from obspy import UTCDateTime
 from obspy.signal.cross_correlation import correlate_template
 import os,sys, time
+import datetime
 import glob
 from numba import jit
 from joblib import Parallel, delayed
@@ -27,30 +28,31 @@ from typing import TypedDict, Dict
 
 
 
-
 class XstationParams(TypedDict):
-    time_range: float # Other stations with arrival within this time range will be considered
+    time_range: float # Other stations with arrival within this time range [seconds] will be considered
     n_stations: int   # Consider a template is valid if other (self not included) n stations also have the same arrival (defined by the above time range)
 
 class SearchParams(TypedDict):
     y_min: float       # CNN picker threshold value (select data with y>=y_min)
-    group_CC: float    # threshold of template-target CC to be considered as a group (from 0~1)
-    time_max: float    # maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times.
-    group_max: int     # stop matching when detecting more than N events in a same template
-    cal_max: int       # maximum number of calculations for each template. Stop check after this number anyway.
+    group_CC: float    # Threshold of template-target CC to be considered as a group (from 0~1)
+    time_max: float    # Maximum time span [days] for template matching. Given the short LFE repeat interval, LFEs should already occur multiple times.
+    group_max: int     # Stop matching when detecting more than N events in a same template
+    cal_max: int       # Maximum number of calculations for each template. Stop check after this number anyway.
     x_station: XstationParams # Cross station checker. See XstationParams for definition
-    ncores: int        # cpus
+    ncores: int        # CPUs
+    fout_dir: str      # Directory path to save output results
 
 
 #=========== Example default values==============
 search_params: SearchParams = {
     'y_min':0.2,
     'group_CC':0.2,
-    'time_max':30,
+    'time_max':60,
     'group_max':100,
-    'cal_max':3000,
-    'x_station':{'time_range':15, 'n_stations':2},
+    'cal_max':10000,
+    'x_station':{'time_range':30, 'n_stations':1},
     'ncores':16,
+    'fout_dir':"./template_result",
 }
 #============================================
 
@@ -374,7 +376,7 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
             load=False:  Cut time series from the daily data centered on the arrival time
             load=True:   Read the time series directly from the .h5py file
     '''
-    ## -----build-in params for timeseries cut (only when load=False)------
+    ## -----Build-in params for timeseries cut (only when load=False), modify them if necessarily------
     sampl = 100
     window_L = 15
     window_R = 15
@@ -389,6 +391,9 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
     csv = pd.read_csv(csv_file_path)
     if len(csv)==0:
         return #empty csv
+    #make directory to save results
+    if not(os.path.exists(search_params['fout_dir'])):
+        os.makedirs(search_params['fout_dir'])
     ##===== load the data directly or cut time series from daily centered at the arrival======
     if load:
         file_hdf5 = csv_file_path.replace('.csv','.hdf5')
@@ -505,8 +510,11 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
     # Note that "use_idx" is the index used by dect_T_all[net_sta] i.e. after y filter, not after QC
     results = dect_in_others(net_sta, search_params['x_station'], dect_T_all, use_idx=QC_idx)
     assert len(results)==len(filt_csv), "length of the idx do not match! filt_csv[results] will be wrong!"
+#    xstation_idx = np.where(results==True)[0]
     print(' number of traces=%d after Xstation check'%(sum(results)))
+#    print('results = ',results)
     filt_csv = filt_csv[results]
+#    filt_csv = filt_csv.iloc[xstation_idx]
     #------------------------------------------------------------------------------
     print(' number of traces=%d, may take maximum %f min to calculate...'%(len(filt_csv),(len(filt_csv)**2/2)*0.01/60/ncores ))
     results = Parallel(n_jobs=ncores,verbose=10,backend='loky')(delayed(batch_CC)(n_i,i,filt_csv['id'],file_hdf5,search_params) for n_i,i in enumerate(filt_csv['id'])  )
@@ -520,7 +528,8 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
         #for k in cc.keys():
         #    sav_CC.append(cc[k])
     sta = csv_file_path.split('.')[1]
-    np.save('CC_group_%s.npy'%(sta),group)
+    np.save(search_params['fout_dir']+"/"+"CC_group_%s.npy"%(sta),group)
+    print('  -> File saved to:%s'%(search_params['fout_dir']+"/"+"CC_group_%s.npy"%(sta)))
     #np.save('sav_CC_%s.npy'%(sta),sav_CC)
     return
 #    for n_i,i in enumerate(filt_csv['id']):
@@ -704,21 +713,28 @@ csvs_file_path.sort()
 # multi-processing is deployed only in the calculation, just loop each station
 cat_T = dect_time('./Data/total_mag_detect_0000_cull_NEW.txt',search_params,True,'./Data/sav_family_phases.npy') #for catalog
 dect_T_all = {csv_file_path.split('_')[-1].replace('.csv',''): res for csv_file_path in csvs_file_path if (res := dect_time(csv_file_path,search_params)) is not None} # for ML detections
+
 for csv_file_path in csvs_file_path:
+    print('start running:', csv_file_path)
     make_template(csv_file_path,search_params,dect_T_all,load=True,pre_QC=True)
 #    run_loop(csv_file_path,search_params)
 
 # parallel processing for each stations
 #results = Parallel(n_jobs=2,verbose=10)(delayed(run_loop)(csv_file_path) for csv_file_path in csvs_file_path  )
 
+import sys
+sys.exit()
+
 
 #===== plotting timeseries this is just to make some demo for checking======
-groups = np.load('CC_group_GOWB.npy',allow_pickle=True)
-#groups = np.load('CC_group_TWGB.npy',allow_pickle=True)
+#groups = np.load('CC_group_GOWB.npy',allow_pickle=True)
+#groups = np.load('./template_result/CC_group_TWGB_BACK.npy',allow_pickle=True)
+groups = np.load('./template_result/CC_group_GOWB.npy',allow_pickle=True)
 groups = groups.item()
 hf = h5py.File('./results/Detections_S_small/cut_daily_PO.GOWB.hdf5','r')
 #hf = h5py.File('./results/Detections_S_small/cut_daily_PO.TWGB.hdf5','r')
 csv = pd.read_csv('./results/Detections_S_small/cut_daily_PO.GOWB.csv')
+#csv = pd.read_csv('./results/Detections_S_small/cut_daily_PO.TWGB.csv')
 T = np.arange(4500)*0.01
 n_plot = 0
 props = dict(boxstyle='round', facecolor='white', alpha=0.7)
@@ -735,6 +751,7 @@ for template_i in groups['template_idxs'].keys():
     ax_merged = plt.subplot2grid((2, 2), (1, 0), colspan=2)
     plt.subplot(2,2,1)
     plt.title('Raw detections',fontsize=14)
+    plt.grid(False)
     idx = csv[csv['id']==k].idx_max_y
     plt.plot(T,template/max(np.abs(template)),'r')
 #    plt.plot(T[idx],template[idx]/max(np.abs(template)),'bo')
@@ -743,6 +760,7 @@ for template_i in groups['template_idxs'].keys():
     plt.text(1,-2,'Z',va='center',bbox=props);plt.text(16,-2,'E',va='center',bbox=props);plt.text(31,-2,'N',va='center',bbox=props)
     plt.subplot(2,2,2)
     plt.title('Shift',fontsize=14)
+    plt.grid(False)
     plt.text(1,-2,'Z',va='center',bbox=props);plt.text(16,-2,'E',va='center',bbox=props);plt.text(31,-2,'N',va='center',bbox=props)
     plt.plot(T,template/max(np.abs(template)),'r')
     sum_target = np.zeros(len(template)) # stacked time series
@@ -754,7 +772,11 @@ for template_i in groups['template_idxs'].keys():
         target = target/max(np.abs(target)) #normalize
         # calculate CCC
         plt.subplot(2,2,1)
-        CCC,shift = cal_CCC2(template,target)
+        #CCC,shift = cal_CCC2(template,target) #do not calculate again, use the info already saved.
+        CCC = groups['template_idxs'][template_i]['CC1'][n]
+        shift = groups['template_idxs'][template_i]['shift'][n]
+        #print('CCC:',CCC,'CCC file:',groups['template_idxs'][template_i]['CC1'][n])
+        #print('shift:',shift,'shift file:',groups['template_idxs'][template_i]['shift'][n])
         #------If the shift is greater than 1500 pts, that means you're matching two different components
         plt.plot(T,target-n-1,'k',linewidth=0.5)
         #plt.text(0,-n-1,'sh=%d'%(shift),fontsize=5,va='center')
@@ -814,7 +836,7 @@ for template_i in groups['template_idxs'].keys():
     plt.title('std=%f'%(np.std(residual)))
     plt.show()
     n_plot += 1
-    if n_plot>10:
+    if n_plot>0:
         break
 
 
