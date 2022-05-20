@@ -663,10 +663,13 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
                 #if any detection is within the range, sum would be >=1 (==True)
                 #if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
                 tmp_prev_idx = prev_idx[ksta]
-                for is_within in abs(t-T_other[prev_idx[ksta]:]) <= datetime.timedelta(seconds=x_station['time_range']):
+                t_diff_all = t-T_other[prev_idx[ksta]:] #array calculate is what makes it real fast
+                for ii,is_within in enumerate(t_diff_all.abs()<=datetime.timedelta(seconds=x_station['time_range'])):
                     if is_within:
                         prev_idx[ksta] = tmp_prev_idx
                         break #early break
+                    if t_diff_all.iloc[ii].total_seconds()<0:
+                        break # t_diff is not within the range(condition above) && is < 0, means t_diff will be larger and larger, no need to go further
                     tmp_prev_idx += 1
                 if is_within:
                     res_n[n_t] += 1
@@ -688,10 +691,13 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
                 #If any detection is within the range, sum would be >=1 (==True)
                 #if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
                 tmp_prev_idx = prev_idx[ksta]
-                for is_within in abs(t-T_other[prev_idx[ksta]:]) <= datetime.timedelta(seconds=x_station['time_range']):
+                t_diff_all = t-T_other[prev_idx[ksta]:]
+                for ii,is_within in enumerate(t_diff_all.abs()<=datetime.timedelta(seconds=x_station['time_range'])):
                     if is_within:
                         prev_idx[ksta] = tmp_prev_idx
                         break # early break
+                    if t_diff_all.iloc[ii].total_seconds()<0:
+                        break # t_diff is not within the range(condition above) && is < 0, means t_diff will be larger and larger, no need to go further
                     tmp_prev_idx += 1
                 if is_within:
                     res_n[n_t] += 1
@@ -702,9 +708,9 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
     return np.array(res)
 
 #res2 = dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all, np.array(range(500)))
-#t1 = time.time()
-#dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all )
-#print(time.time()-t1)
+t1 = time.time()
+cc=dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all )
+print(time.time()-t1)
 
 
 #def run_loop(csv_file_path,search_params):
@@ -733,8 +739,10 @@ csvs_file_path.sort()
 
 #----------start running here-------------
 # multi-processing is deployed only in the calculation, just loop each station
+print('Collecting detection time for all the stations...')
 cat_T = dect_time('./Data/total_mag_detect_0000_cull_NEW.txt',search_params,True,'./Data/sav_family_phases.npy') #for catalog
 dect_T_all = {csv_file_path.split('_')[-1].replace('.csv',''): res for csv_file_path in csvs_file_path if (res := dect_time(csv_file_path,search_params)) is not None} # for ML detections
+print('Collecting time done!')
 
 for csv_file_path in csvs_file_path:
     print('start running:', csv_file_path)
