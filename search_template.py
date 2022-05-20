@@ -649,16 +649,26 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
     T_self = dect_T_all[self_net_sta] # self
     res = [False] * len(T_self)
     res_n = [0] * len(T_self) # number of other stations have same arrival
+    prev_idx = {} # {sta: prev_idx_to_skip}
     if use_idx is None:
         # use all the idx if use_idx is unspecified
         for n_t,t in enumerate(T_self):
-            # loop through every stations
+            # Loop through every stations. Future optimization: t is sorted and is always increasing, so for other stations, skip the prev_idx if they're False already
             for ksta in dect_T_all.keys():
                 if ksta == self_net_sta:
                     continue
+                if ksta not in prev_idx:
+                    prev_idx[ksta] = 0 # initial new prev_idx start from 0
                 T_other = dect_T_all[ksta]
-                if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
-                    #if any detection is within the range, sum would be >=1 (==True)
+                #if any detection is within the range, sum would be >=1 (==True)
+                #if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
+                tmp_prev_idx = prev_idx[ksta]
+                for is_within in abs(t-T_other[prev_idx[ksta]:]) <= datetime.timedelta(seconds=x_station['time_range']):
+                    if is_within:
+                        prev_idx[ksta] = tmp_prev_idx
+                        break #early break
+                    tmp_prev_idx += 1
+                if is_within:
                     res_n[n_t] += 1
                     if res_n[n_t] >= x_station['n_stations']:
                         res[n_t] = True
@@ -672,9 +682,18 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
             for ksta in dect_T_all.keys():
                 if ksta == self_net_sta:
                     continue
+                if ksta not in prev_idx:
+                    prev_idx[ksta] = 0 # initial new prev_idx start from 0
                 T_other = dect_T_all[ksta]
-                if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
-                    #if any detection is within the range, sum would be >=1 (==True)
+                #If any detection is within the range, sum would be >=1 (==True)
+                #if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
+                tmp_prev_idx = prev_idx[ksta]
+                for is_within in abs(t-T_other[prev_idx[ksta]:]) <= datetime.timedelta(seconds=x_station['time_range']):
+                    if is_within:
+                        prev_idx[ksta] = tmp_prev_idx
+                        break # early break
+                    tmp_prev_idx += 1
+                if is_within:
                     res_n[n_t] += 1
                     if res_n[n_t] >= x_station['n_stations']:
                         res[n_t] = True
@@ -683,6 +702,9 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
     return np.array(res)
 
 #res2 = dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all, np.array(range(500)))
+#t1 = time.time()
+#dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all )
+#print(time.time()-t1)
 
 
 #def run_loop(csv_file_path,search_params):
