@@ -394,6 +394,18 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
     #make directory to save results
     if not(os.path.exists(search_params['fout_dir'])):
         os.makedirs(search_params['fout_dir'])
+    
+    net_sta = csv_file_path.split('/')[-1].split('_')[-1].replace('.csv','')
+    #hf = h5py.File(file_hdf5,'r')
+    #y_min = 0.3
+    #group_CC = 0.2
+    #group = {}
+    #group_rec = set()
+    #time_1 = time.time()
+    filt_csv = csv[csv['y']>=y_min]
+    print(' number of traces=%d after y>=%f filter'%(len(filt_csv),y_min))
+    assert len(filt_csv)==len(dect_T_all[net_sta]), "length of filt_csv and dect_T do not match!"
+    
     ##===== load the data directly or cut time series from daily centered at the arrival======
     if load:
         file_hdf5 = csv_file_path.replace('.csv','.hdf5')
@@ -406,7 +418,7 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
         sta = csv['id'][0].split('.')[1]
         comp = "*"
         data_path = data_path_base + net
-        file_hdf5 = file_hdf5_base+"/"+"%s.hdf5"%(sta)
+        file_hdf5 = file_hdf5_base+"/"+"%s.%s.hdf5"%(net,sta) # where to save the data
         print(' net:%s sta:%s comp:%s'%(net,sta,comp))
         print(' search data from:%s'%(data_path_base))
         print(' create temp data:%s'%(file_hdf5))
@@ -417,9 +429,10 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
         else:
             print("File: %s already exist! Exit and not overwritting everything"%(file_hdf5))
             sys.exit()
-        for ii,i in enumerate(csv['id']):
+        #for ii,i in enumerate(csv['id']):
+        for ii,i in enumerate(filt_csv['id']):
             #if ii%(len(csv)//10000)==0:
-            print('  %.1f of data processed... (%d/%d)'%((ii/len(csv))*100,ii,len(csv)))
+            print('  %.1f of data processed... (%d/%d)'%((ii/len(filt_csv))*100,ii,len(filt_csv)))
             arr = UTCDateTime(i.split('_')[-1])
             t1 = arr-window_L
             t2 = arr+window_R
@@ -430,7 +443,7 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
             t2_fileZ = data_path+'/'+t2.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'Z.mseed'
             t2_fileE = data_path+'/'+t2.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
             t2_fileN = data_path+'/'+t2.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'N.mseed'
-            # get exact file name or '' if no file found
+            # get exact file name or '' if file doesnt exist
             t1_fileZ = '' if not glob.glob(t1_fileZ) else glob.glob(t1_fileZ)[0]
             t1_fileE = '' if not glob.glob(t1_fileE) else glob.glob(t1_fileE)[0]
             t1_fileN = '' if not glob.glob(t1_fileN) else glob.glob(t1_fileN)[0]
@@ -439,7 +452,7 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
             t2_fileN = '' if not glob.glob(t2_fileN) else glob.glob(t2_fileN)[0]
             if '' in [t1_fileZ,t1_fileE,t1_fileN,t2_fileZ,t2_fileE,t2_fileN]:
                 continue # file can't find
-            #determine if you need to reload new data
+            #determine if you need to reload new daily data for time series cutting
             if t1_fileZ not in prev_dataZ:
                 prev_dataZ[t1_fileZ] = data_process(filePath=t1_fileZ,sampl=sampl)
                 prev_dataE[t1_fileE] = data_process(filePath=t1_fileE,sampl=sampl) # also for E,N data
@@ -484,16 +497,7 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
             hf.create_dataset('data/'+i,data=[data_Z,data_E,data_N]) #this is the raw data (no feature scaling) centered at arrival
             hf.close()
     #===file_hdf5 is done, no matter its loaded directly or re-cut and re-centered from daily mseed===
-    net_sta = csv_file_path.split('/')[-1].split('_')[-1].replace('.csv','')
-    #hf = h5py.File(file_hdf5,'r')
-    #y_min = 0.3
-    #group_CC = 0.2
-    #group = {}
-    #group_rec = set()
-    #time_1 = time.time()
-    filt_csv = csv[csv['y']>=y_min]
-    print(' number of traces=%d after y>=%f filter'%(len(filt_csv),y_min))
-    assert len(filt_csv)==len(dect_T_all[net_sta]), "length of filt_csv and dect_T do not match!"
+    
     if pre_QC:
         QC_idx = []
         hf = h5py.File(file_hdf5,'r')
@@ -527,9 +531,9 @@ def make_template(csv_file_path: str, search_params: SearchParams, dect_T_all: D
         group['template_idxs'].update(res) #e.g. res = {0: {'group': [1, 3, 4, 5, 6]}, 'shift':[519, 289, 316, 1084, 46], 'CC1':[.....], 'CC2':[.....] }, for template idx=0, idx 1,3,4,5,6 are correlated.
         #for k in cc.keys():
         #    sav_CC.append(cc[k])
-    sta = csv_file_path.split('.')[1]
+    sta = csv_file_path.split('/')[-1].split('.')[1]
     np.save(search_params['fout_dir']+"/"+"CC_group_%s.npy"%(sta),group)
-    print('  -> File saved to:%s'%(search_params['fout_dir']+"/"+"CC_group_%s.npy"%(sta)))
+    print('  -> File saved in : %s'%(search_params['fout_dir']+"/"+"CC_group_%s.npy"%(sta)))
     #np.save('sav_CC_%s.npy'%(sta),sav_CC)
     return
 #    for n_i,i in enumerate(filt_csv['id']):
@@ -682,16 +686,20 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
         for n_t in use_idx:
             t = T_self[n_t]
             # for this time, loop through every stations
+            #print('========================')
+            #print(' time:',t)
             for ksta in dect_T_all.keys():
                 if ksta == self_net_sta:
                     continue
                 if ksta not in prev_idx:
                     prev_idx[ksta] = 0 # initial new prev_idx start from 0
+                #print('  -searching sta:%s total length=%d'%(ksta,len(dect_T_all[ksta])))
                 T_other = dect_T_all[ksta]
                 #If any detection is within the range, sum would be >=1 (==True)
                 #if sum(abs(t-T_other) <= datetime.timedelta(seconds=x_station['time_range'])):
                 tmp_prev_idx = prev_idx[ksta]
                 t_diff_all = t-T_other[prev_idx[ksta]:]
+                #orig_prev_idx = prev_idx[ksta]
                 for ii,is_within in enumerate(t_diff_all.abs()<=datetime.timedelta(seconds=x_station['time_range'])):
                     if is_within:
                         prev_idx[ksta] = tmp_prev_idx
@@ -700,17 +708,19 @@ def dect_in_others(self_net_sta: str, x_station: XstationParams, dect_T_all: Dic
                         break # t_diff is not within the range(condition above) && is < 0, means t_diff will be larger and larger, no need to go further
                     tmp_prev_idx += 1
                 if is_within:
+                    #print('     =',T_other[orig_prev_idx:].iloc[ii], res_n[n_t]+1)
                     res_n[n_t] += 1
                     if res_n[n_t] >= x_station['n_stations']:
                         res[n_t] = True
+                        #print('        found enough stations!')
                         continue # continue to next t
         res = np.array(res)[use_idx]
     return np.array(res)
 
 #res2 = dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all, np.array(range(500)))
-t1 = time.time()
-cc=dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all )
-print(time.time()-t1)
+#t1 = time.time()
+#cc=dect_in_others('PO.GOWB',{'time_range':15, 'n_stations':1}, dect_T_all, np.arange(500) )
+#print(time.time()-t1)
 
 
 #def run_loop(csv_file_path,search_params):
@@ -745,7 +755,7 @@ dect_T_all = {csv_file_path.split('_')[-1].replace('.csv',''): res for csv_file_
 print('Collecting time done!')
 
 for csv_file_path in csvs_file_path:
-    print('start running:', csv_file_path)
+    print('Start running:', csv_file_path)
     make_template(csv_file_path,search_params,dect_T_all,load=True,pre_QC=True)
 #    run_loop(csv_file_path,search_params)
 
@@ -813,7 +823,7 @@ for template_i in groups['template_idxs'].keys():
         plt.subplot(2,2,2)
         sh_target = roll_zeropad3(target,shift)
         CCC2,shift2 = cal_CCC2(template,sh_target)
-        # stack the data if it is not just zeros and the CC is basically zero lag after the first shifting
+        # stack the data if it is not just zero array and the CC is basically zero lag after the first shifting
         if max(np.abs(sh_target))!=0 and np.abs(shift2)<1 and CCC2>=0.2:
             plt.plot(T,sh_target-n-1,'k',linewidth=0.5)
             sum_target += (sh_target)
@@ -866,7 +876,7 @@ for template_i in groups['template_idxs'].keys():
     plt.title('std=%f'%(np.std(residual)))
     plt.show()
     n_plot += 1
-    if n_plot>0:
+    if n_plot>5:
         break
 
 
