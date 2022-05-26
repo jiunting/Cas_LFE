@@ -14,6 +14,8 @@ from obspy import UTCDateTime
 import obspy
 import glob,os
 import h5py
+from obspy.signal.cross_correlation import correlate_template
+
 
 #load family and arrival information from HypoINV file
 EQinfo = np.load('sav_family_phases.npy',allow_pickle=True)
@@ -110,6 +112,11 @@ def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102"
     assert len(DD[0].data)==3001, "cut data not exactly 3001 points"
     return DD[0].data
 
+
+def CCC_QC(data1,data2):
+    #cross-correlation "Coef" cunction for QC
+    CCCF = correlate_template(data1,data2)
+    return np.max(np.abs(CCCF))
 
 def QC(data,Type='data'):
     '''
