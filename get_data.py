@@ -4,6 +4,8 @@
 Created on Mon Jan 25 17:38:50 2021
 
 @author: timlin
+
+5/26 2022: 1. Write out template OT in h5py file so that I know which trace is using. 2. QC check before write out (not normalized yet)
 """
 
 #Use detection time to cut timeseries from Talapas dataset
@@ -109,6 +111,47 @@ def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102"
     return DD[0].data
 
 
+def QC(data,Type='data'):
+    '''
+        quality control of data
+        return true if data pass all the checking filters, otherwise false
+        the same function used before but with a N2=90 instead of 30
+    '''
+    #nan value in data check
+    if np.isnan(data).any():
+        return False
+    #if they are all zeros
+    if np.max(np.abs(data))==0:
+        return False
+    #normalize the data to maximum 1
+    data = data/np.max(np.abs(data))
+    #set QC parameters for noise or data
+    if Type == 'data':
+        N1,N2,min_std,CC = 30,90,0.01,0.98
+    else:
+        N1,N2,min_std,CC = 30,90,0.05,0.98
+    #std window check, std too small probably just zeros
+    wind = len(data)//N1
+    for i in range(N1):
+        #print('data=',data[int(i*wind):int((i+1)*wind)])
+        #print('std=',np.std(data[int(i*wind):int((i+1)*wind)]))
+        if np.std(data[int(i*wind):int((i+1)*wind)])<min_std :
+            return False
+    #auto correlation, seperate the data into n segments and xcorr with rest of data(without small data) to see if data are non-corh
+    wind = len(data)//N2
+    for i in range(N2):
+        data_small = data[int(i*wind):int((i+1)*wind)] #small segment
+        data_bef = data[:int(i*wind)]
+        data_aft = data[int((i+1)*wind):]
+        data_whole = np.concatenate([data_bef,data_aft])
+        curr_CC = CCC_QC(data_whole,data_small)
+        if curr_CC>CC:
+            return False
+    return True
+
+
+
+
 
 currentFam = '-1' #current family ID, when changing ID, output .h5 file.
 sta_P1 = {} #this record Phase1 (P wave)
@@ -137,13 +180,13 @@ with open(detcFile,'r') as IN1:
             #print('sta_P1 key=',sta_P1.keys())
             for name in sta_P1.keys():
                 #save the P wave to h5py data
-                h5f = h5py.File('./Data/ID_%s_%s_P.h5'%(currentFam,name),'w')
-                h5f.create_dataset('waves',data=sta_P1[name])
+                h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_P.h5'%(currentFam,name),'w')
+                h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P1[name])
                 h5f.close()
             for name in sta_P2.keys():
                 #save the S wave to h5py data
-                h5f = h5py.File('./Data/ID_%s_%s_S.h5'%(currentFam,name),'w')
-                h5f.create_dataset('waves',data=sta_P2[name])
+                h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_S.h5'%(currentFam,name),'w')
+                h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P2[name])
                 h5f.close()
             #reset sta_P1 and sta_P2
             currentFam = ID
@@ -226,12 +269,17 @@ with open(detcFile,'r') as IN1:
                         #assert len(D_Z[0].data)==len(D_E[0].data)==len(D_N[0].data)==(timeL+timeR)*sampl+1, "length are different! check the data processing"
                         assert len(D_Z)==len(D_E)==len(D_N)==(timeL+timeR)*sampl+1, "length are different! check the data processing"
                         #DD = np.concatenate([D_Z[0].data,D_E[0].data,D_N[0].data])
+                        D_Z = D_Z-np.mean(D_Z)
+                        D_E = D_E-np.mean(D_E)
+                        D_N = D_N-np.mean(D_N)
                         DD = np.concatenate([D_Z,D_E,D_N])
-                        sav_name = '.'.join([net,sta,comp])
-                        if not sav_name in sta_P1:
-                            sta_P1[sav_name] = [DD]
-                        else:
-                            sta_P1[sav_name].append(DD)
+                        if QC(DD, Type='data'):
+                            DD = DD/max(abs(DD))
+                            sav_name = '.'.join([net,sta,comp])
+                            if not sav_name in sta_P1:
+                                sta_P1[sav_name] = [DD]
+                            else:
+                                sta_P1[sav_name].append(DD)
                         #np.save('./Data/Fam_%s_%s_%s_P1.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                         #DD.write('./Data/Fam_%s_%s_%s_P1.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                         #DD.clear()
@@ -249,12 +297,17 @@ with open(detcFile,'r') as IN1:
                         #assert len(D_Z[0].data)==len(D_E[0].data)==len(D_N[0].data)==(timeL+timeR)*sampl+1, "length are different! check the data processing"
                         assert len(D_Z)==len(D_E)==len(D_N)==(timeL+timeR)*sampl+1, "length are different! check the data processing"
                         #DD = np.concatenate([D_Z[0].data,D_E[0].data,D_N[0].data])
+                        D_Z = D_Z-np.mean(D_Z)
+                        D_E = D_E-np.mean(D_E)
+                        D_N = D_N-np.mean(D_N)
                         DD = np.concatenate([D_Z,D_E,D_N])
-                        sav_name = '.'.join([net,sta,comp])
-                        if not sav_name in sta_P1:
-                            sta_P1[sav_name] = [DD]
-                        else:
-                            sta_P1[sav_name].append(DD)
+                        if QC(DD, Type='data'):
+                            DD = DD/max(abs(DD))
+                            sav_name = '.'.join([net,sta,comp])
+                            if not sav_name in sta_P1:
+                                sta_P1[sav_name] = [DD]
+                            else:
+                                sta_P1[sav_name].append(DD)
                         #np.save('./Data/Fam_%s_%s_%s_P1.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                         #DD.write('./Data/Fam_%s_%s_%s_P1.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                         #DD.clear()
@@ -310,12 +363,17 @@ with open(detcFile,'r') as IN1:
                     D_N = data_cut(prev_dataN[sta]['file1']['data'],Data2='',t1=t1,t2=t2)
                     #concatenate ZEN traces
                     assert len(D_Z)==len(D_E)==len(D_N)==(timeL+timeR)*sampl+1, "length are different! check the data processing"
+                    D_Z = D_Z-np.mean(D_Z)
+                    D_E = D_E-np.mean(D_E)
+                    D_N = D_N-np.mean(D_N)
                     DD = np.concatenate([D_Z,D_E,D_N])
-                    sav_name = '.'.join([net,sta,comp])
-                    if not sav_name in sta_P2:
-                        sta_P2[sav_name] = [DD]
-                    else:
-                        sta_P2[sav_name].append(DD)
+                    if QC(DD, Type='data'):
+                        DD = DD/max(abs(DD))
+                        sav_name = '.'.join([net,sta,comp])
+                        if not sav_name in sta_P2:
+                            sta_P2[sav_name] = [DD]
+                        else:
+                            sta_P2[sav_name].append(DD)
                     #np.save('./Data/Fam_%s_%s_%s_P2.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                     #DD.write('./Data/Fam_%s_%s_%s_P2.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                     #DD.clear()
@@ -331,12 +389,17 @@ with open(detcFile,'r') as IN1:
                     D_N = data_cut(prev_dataN[sta]['file1']['data'],Data2=prev_dataN[sta]['file2']['data'],t1=t1,t2=t2)
                     #concatenate ZEN traces
                     assert len(D_Z)==len(D_E)==len(D_N)==(timeL+timeR)*sampl+1, "length are different! check the data processing"
-                    DD = np.concatenate([D_Z,D_E,D_N])                  
-                    sav_name = '.'.join([net,sta,comp])
-                    if not sav_name in sta_P2:
-                        sta_P2[sav_name] = [DD]
-                    else:
-                        sta_P2[sav_name].append(DD)
+                    D_Z = D_Z-np.mean(D_Z)
+                    D_E = D_E-np.mean(D_E)
+                    D_N = D_N-np.mean(D_N)
+                    DD = np.concatenate([D_Z,D_E,D_N])
+                    if QC(DD, Type='data'):
+                        DD = DD/max(abs(DD))
+                        sav_name = '.'.join([net,sta,comp])
+                        if not sav_name in sta_P2:
+                            sta_P2[sav_name] = [DD]
+                        else:
+                            sta_P2[sav_name].append(DD)
                     #np.save('./Data/Fam_%s_%s_%s_P2.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                     #DD.write('./Data/Fam_%s_%s_%s_P2.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                     #DD.clear()
@@ -346,13 +409,13 @@ with open(detcFile,'r') as IN1:
 #save the last family
 for name in sta_P1.keys():
     #save the h5py data
-    h5f = h5py.File('./Data/ID_%s_%s_P.h5'%(currentFam,name),'w')
-    h5f.create_dataset('waves',data=sta_P1[name])
+    h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_P.h5'%(currentFam,name),'w')
+    h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P1[name])
     h5f.close()
 for name in sta_P2.keys():
     #save the h5py data
-    h5f = h5py.File('./Data/ID_%s_%s_S.h5'%(currentFam,name),'w')
-    h5f.create_dataset('waves',data=sta_P2[name])
+    h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_S.h5'%(currentFam,name),'w')
+    h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P2[name])
     h5f.close()
 
 
