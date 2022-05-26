@@ -181,24 +181,28 @@ with open(detcFile,'r') as IN1:
         #if Mag<2.49:
         #    continue #so that only save large LFEs for testing
         #If changing to new ID, save existing results and reset everything for the next run.
+        '''
         if ID != currentFam:
             print('-change ID from:',currentFam,ID)
             #print('sta_P1=',sta_P1)
             #print('sta_P1 key=',sta_P1.keys())
             for name in sta_P1.keys():
                 #save the P wave to h5py data
-                h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_P.h5'%(currentFam,name),'w')
+                h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,name),'w')
                 h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P1[name])
                 h5f.close()
             for name in sta_P2.keys():
                 #save the S wave to h5py data
-                h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_S.h5'%(currentFam,name),'w')
+                h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,name),'w')
                 h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P2[name])
                 h5f.close()
+        
             #reset sta_P1 and sta_P2
             currentFam = ID
             sta_P1 = {}
             sta_P2 = {}
+        '''
+        currentFam = ID
 
         #for this family ID, check arrivals (for each station) from EQinfo
         for sta in EQinfo[ID]['sta'].keys():
@@ -283,10 +287,14 @@ with open(detcFile,'r') as IN1:
                         if QC(DD, Type='data'):
                             DD = DD/max(abs(DD))
                             sav_name = '.'.join([net,sta,comp])
-                            if not sav_name in sta_P1:
-                                sta_P1[sav_name] = [DD]
-                            else:
-                                sta_P1[sav_name].append(DD)
+                            #save the P wave to h5py data
+                            h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,name),'a')
+                            h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
+                            h5f.close()
+                            #if not sav_name in sta_P1:
+                            #    sta_P1[sav_name] = [DD]
+                            #else:
+                            #    sta_P1[sav_name].append(DD)
                         #np.save('./Data/Fam_%s_%s_%s_P1.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                         #DD.write('./Data/Fam_%s_%s_%s_P1.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                         #DD.clear()
@@ -311,10 +319,14 @@ with open(detcFile,'r') as IN1:
                         if QC(DD, Type='data'):
                             DD = DD/max(abs(DD))
                             sav_name = '.'.join([net,sta,comp])
-                            if not sav_name in sta_P1:
-                                sta_P1[sav_name] = [DD]
-                            else:
-                                sta_P1[sav_name].append(DD)
+                            #save the P wave to h5py data
+                            h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,name),'a')
+                            h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
+                            h5f.close()
+                            #if not sav_name in sta_P1:
+                            #    sta_P1[sav_name] = [DD]
+                            #else:
+                            #    sta_P1[sav_name].append(DD)
                         #np.save('./Data/Fam_%s_%s_%s_P1.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                         #DD.write('./Data/Fam_%s_%s_%s_P1.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                         #DD.clear()
@@ -377,10 +389,14 @@ with open(detcFile,'r') as IN1:
                     if QC(DD, Type='data'):
                         DD = DD/max(abs(DD))
                         sav_name = '.'.join([net,sta,comp])
-                        if not sav_name in sta_P2:
-                            sta_P2[sav_name] = [DD]
-                        else:
-                            sta_P2[sav_name].append(DD)
+                        #save the S wave to h5py data
+                        h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,name),'a')
+                        h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
+                        h5f.close()
+                        #if not sav_name in sta_P2:
+                        #    sta_P2[sav_name] = [DD]
+                        #else:
+                        #    sta_P2[sav_name].append(DD)
                     #np.save('./Data/Fam_%s_%s_%s_P2.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                     #DD.write('./Data/Fam_%s_%s_%s_P2.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                     #DD.clear()
@@ -403,27 +419,31 @@ with open(detcFile,'r') as IN1:
                     if QC(DD, Type='data'):
                         DD = DD/max(abs(DD))
                         sav_name = '.'.join([net,sta,comp])
-                        if not sav_name in sta_P2:
-                            sta_P2[sav_name] = [DD]
-                        else:
-                            sta_P2[sav_name].append(DD)
+                        #save the S wave to h5py data
+                        h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,name),'a')
+                        h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
+                        h5f.close()
+                        #if not sav_name in sta_P2:
+                        #    sta_P2[sav_name] = [DD]
+                        #else:
+                        #    sta_P2[sav_name].append(DD)
                     #np.save('./Data/Fam_%s_%s_%s_P2.npy'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),DD)
                     #DD.write('./Data/Fam_%s_%s_%s_P2.mseed'%(ID,sta,arr.strftime('%Y%m%d_%H%M%S.%f')[:-2]),format='MSEED')
                     #DD.clear()
 
                 #print('  --sta:%5s %s'%(sta,arr.isoformat()))
-    
+
 #save the last family
-for name in sta_P1.keys():
-    #save the h5py data
-    h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_P.h5'%(currentFam,name),'w')
-    h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P1[name])
-    h5f.close()
-for name in sta_P2.keys():
-    #save the h5py data
-    h5f = h5py.File('./Data_QC_rmean/ID_%s_%s_S.h5'%(currentFam,name),'w')
-    h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P2[name])
-    h5f.close()
+#for name in sta_P1.keys():
+#    #save the h5py data
+#    h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,name),'w')
+#    h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P1[name])
+#    h5f.close()
+#for name in sta_P2.keys():
+#    #save the h5py data
+#    h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,name),'w')
+#    h5f.create_dataset('waves'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=sta_P2[name])
+#    h5f.close()
 
 
 
