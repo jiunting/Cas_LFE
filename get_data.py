@@ -47,7 +47,14 @@ CN_list = {'GOBB':'EH',
            'VGZ':'BH',
            'YOUB':'HH',
            }
-
+           
+#===============================
+# skip data that are previously exist by familyID?
+skip_IDs = []
+with open('skip_id.txt','r') as fin:
+    for line in fin.readlines():
+        skip_IDs.append(line.split()[0])
+#===============================
 
 def data_process(filePath,sampl=sampl):
     """
@@ -68,8 +75,11 @@ def data_process(filePath,sampl=sampl):
     
     """
     if not os.path.exists(filePath):
-        return ''
-    D = obspy.read(filePath)
+        return None
+    try:
+        D = obspy.read(filePath)
+    except:
+        return None #unable to read file either an empty or broken file
     if len(D)!=1:
         D.merge(method=1,interpolation_samples=-1,fill_value='interpolate')
     t1 = D[0].stats.starttime
@@ -203,6 +213,8 @@ with open(detcFile,'r') as IN1:
             sta_P2 = {}
         '''
         currentFam = ID
+        if currentFam in skip_IDs:
+            continue
 
         #for this family ID, check arrivals (for each station) from EQinfo
         for sta in EQinfo[ID]['sta'].keys():
@@ -231,7 +243,7 @@ with open(detcFile,'r') as IN1:
                 arr = OT+P1
                 t1 = arr - timeL # cut timeseries start time
                 t2 = arr + timeR # cut timeseries end time. Note that t1 and t2 may across +1 day.
-                #locate the file, read the file. If the file does not exist, the following data_process will return empty string.
+                #locate the file, read the file. If the file does not exist, the following data_process will return None.
                 #loc is always empty, comps are always comp[ENZ]
                 t1_fileZ = dataDir+'/'+t1.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'Z.mseed'
                 t1_fileE = dataDir+'/'+t1.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
@@ -268,8 +280,9 @@ with open(detcFile,'r') as IN1:
                 if t1.strftime('%Y%m%d') == t2.strftime('%Y%m%d'):
                     #only load t1 file
                     #print('prev_dataZ=',prev_dataZ)
-                    if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
-                        #continue #either Z,E or N file are missing
+                    #if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
+                    if (prev_dataZ[sta]['file1']['data'] is None) or (prev_dataE[sta]['file1']['data'] is None) or  (prev_dataN[sta]['file1']['data'] is None):
+                        #continue #either Z,E or N file is unavailable
                         pass #should go to S phase
                     else:
                         #print(' --Begin cut from',t1_fileZ)
@@ -288,7 +301,7 @@ with open(detcFile,'r') as IN1:
                             DD = DD/max(abs(DD))
                             sav_name = '.'.join([net,sta,comp])
                             #save the P wave to h5py data
-                            h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,name),'a')
+                            h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,sav_name),'a')
                             h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
                             h5f.close()
                             #if not sav_name in sta_P1:
@@ -300,7 +313,8 @@ with open(detcFile,'r') as IN1:
                         #DD.clear()
                 else:
                     #time window across different day, read both
-                    if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])) and not(os.path.exists(prev_dataZ[sta]['file2']['name']) & os.path.exists(prev_dataE[sta]['file2']['name']) & os.path.exists(prev_dataN[sta]['file2']['name'])) :
+                    #if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])) and not(os.path.exists(prev_dataZ[sta]['file2']['name']) & os.path.exists(prev_dataE[sta]['file2']['name']) & os.path.exists(prev_dataN[sta]['file2']['name'])) :
+                    if (prev_dataZ[sta]['file1']['data'] is None) or (prev_dataE[sta]['file1']['data'] is None) or (prev_dataN[sta]['file1']['data'] is None) or (prev_dataZ[sta]['file2']['data'] is None) or (prev_dataE[sta]['file2']['data'] is None) or (prev_dataN[sta]['file2']['data'] is None):
                         #continue #either Z,E or N file are missing
                         pass
                     else:
@@ -320,7 +334,7 @@ with open(detcFile,'r') as IN1:
                             DD = DD/max(abs(DD))
                             sav_name = '.'.join([net,sta,comp])
                             #save the P wave to h5py data
-                            h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,name),'a')
+                            h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_P.h5'%(currentFam,sav_name),'a')
                             h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
                             h5f.close()
                             #if not sav_name in sta_P1:
@@ -374,7 +388,8 @@ with open(detcFile,'r') as IN1:
 
                 if t1.strftime('%Y%m%d') == t2.strftime('%Y%m%d'):
                     #only load t1 file
-                    if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
+                    #if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
+                    if (prev_dataZ[sta]['file1']['data'] is None) or (prev_dataE[sta]['file1']['data'] is None) or  (prev_dataN[sta]['file1']['data'] is None):
                         continue #no other phases need to run
                     #print(' --Begin cut from',t1_fileZ)
                     D_Z = data_cut(prev_dataZ[sta]['file1']['data'],Data2='',t1=t1,t2=t2)
@@ -390,7 +405,7 @@ with open(detcFile,'r') as IN1:
                         DD = DD/max(abs(DD))
                         sav_name = '.'.join([net,sta,comp])
                         #save the S wave to h5py data
-                        h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,name),'a')
+                        h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,sav_name),'a')
                         h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
                         h5f.close()
                         #if not sav_name in sta_P2:
@@ -402,9 +417,11 @@ with open(detcFile,'r') as IN1:
                     #DD.clear()
                 else:
                     #time window across different day, read both
-                    if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
-                        continue
-                    if not (os.path.exists(prev_dataZ[sta]['file2']['name']) & os.path.exists(prev_dataE[sta]['file2']['name']) & os.path.exists(prev_dataN[sta]['file2']['name'])):
+                    #if not (os.path.exists(prev_dataZ[sta]['file1']['name']) & os.path.exists(prev_dataE[sta]['file1']['name']) & os.path.exists(prev_dataN[sta]['file1']['name'])):
+                    #    continue
+                    #if not (os.path.exists(prev_dataZ[sta]['file2']['name']) & os.path.exists(prev_dataE[sta]['file2']['name']) & os.path.exists(prev_dataN[sta]['file2']['name'])):
+                    #    continue
+                    if (prev_dataZ[sta]['file1']['data'] is None) or (prev_dataE[sta]['file1']['data'] is None) or (prev_dataN[sta]['file1']['data'] is None) or (prev_dataZ[sta]['file2']['data'] is None) or (prev_dataE[sta]['file2']['data'] is None) or (prev_dataN[sta]['file2']['data'] is None):
                         continue
                     #print(' --Begin cut from both',t1_fileZ,t2_fileZ)
                     D_Z = data_cut(prev_dataZ[sta]['file1']['data'],Data2=prev_dataZ[sta]['file2']['data'],t1=t1,t2=t2)
@@ -420,7 +437,7 @@ with open(detcFile,'r') as IN1:
                         DD = DD/max(abs(DD))
                         sav_name = '.'.join([net,sta,comp])
                         #save the S wave to h5py data
-                        h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,name),'a')
+                        h5f = h5py.File('./Data_QC_rmean_norm/ID_%s_%s_S.h5'%(currentFam,sav_name),'a')
                         h5f.create_dataset('waves/'+OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],data=DD)
                         h5f.close()
                         #if not sav_name in sta_P2:
