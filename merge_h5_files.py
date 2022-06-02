@@ -28,7 +28,7 @@ files_S.sort()
 def get_catalog(catalog_file: str) -> pd.DataFrame:
     head = ['famID','mag','catOT']
     sav_all = []
-    with open(detcFile,'r') as IN1:
+    with open(catalog_file,'r') as IN1:
         for line in IN1.readlines():
             line = line.strip()
             ID = line.split()[0] #family ID
@@ -114,16 +114,6 @@ catalog_file = 'total_mag_detect_0000_cull_NEW.txt'
 catalog = get_catalog(catalog_file)
 
 
-# looping P files
-for i, fileP in enumerate(files_P):
-    print('Now in',i)
-    if i==0:
-        h5py_merge(fileP, catalog, "merged20220602_P", "merged20220602_P", overwrite=True)
-    else:
-        h5py_merge(fileP, catalog, "merged20220602_P", "merged20220602_P", overwrite=False)
-    if i==2:
-        break
-    
 # looping S files
 for i, fileS in enumerate(files_S):
     print('Now in',i)
@@ -131,8 +121,15 @@ for i, fileS in enumerate(files_S):
         h5py_merge(fileS, catalog, "merged20220602_S", "merged20220602_S", overwrite=True)
     else:
         h5py_merge(fileS, catalog, "merged20220602_S", "merged20220602_S", overwrite=False)
-    if i==2:
-        break
+
+
+# looping P files
+for i, fileP in enumerate(files_P):
+    print('Now in',i)
+    if i==0:
+        h5py_merge(fileP, catalog, "merged20220602_P", "merged20220602_P", overwrite=True)
+    else:
+        h5py_merge(fileP, catalog, "merged20220602_P", "merged20220602_P", overwrite=False)
 
 
 import sys
