@@ -104,11 +104,12 @@ print("LOADING DATA")
 #x_data = h5py.File('Data_QC_rmean_norm/merged20220602_S.h5', 'r') # for S wave
 #csv = pd.read_csv('Data_QC_rmean_norm/merged20220602_S.csv')
 #n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r') # noise part is the same
-x_data = "Data_QC_rmean_norm/merged20220602_S.h5"
-csv = "Data_QC_rmean_norm/merged20220602_S.csv"
-n_data = "Cascadia_noise_QC_rmean_norm.h5"
+x_data_file = "Data_QC_rmean_norm/merged20220602_S.h5"
+csv_file = "Data_QC_rmean_norm/merged20220602_S.csv"
+n_data_file = "Cascadia_noise_QC_rmean_norm.h5"
 
-
+csv = pd.read_csv(csv_file)
+n_data = h5py.File(n_data_file,'r')
 
 model_save_file="large_"+str(large)+"_unet_lfe_std_"+str(std)+".tf."+run_num  
         
@@ -170,7 +171,7 @@ np.save('./Index/index_%s/noise_test_inds.npy'%(run_num),noise_test_inds)
 # do the shifts and make batches
 print("SETTING UP GENERATOR")
 #def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,valid=False):
-def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,valid=False):
+def my_data_generator(batch_size,x_data_file,n_data_file,sig_inds,noise_inds,csv_file,sr,std,valid=False):
     """
     Generator for Unet training. Modified the x_data, sig_inds part on 6/3 2022
     
@@ -178,7 +179,7 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
     ======
     batch_size: int
         Batch size for each training step
-    x_data: str
+    x_data_file: str
         Name for big h5py file with all the data. Can be called by the key in the .csv file
     sig_inds: list or np.ndarray
         List of event index. Use this to get the keys that call h5py data.
@@ -189,11 +190,11 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
                 1  CN   VGZ   BH  S   2008-05-20T01:46:29.7000_001.CN.VGZ.BH.S        1753
                 1  CN  YOUB   HH  S  2008-05-20T01:46:29.7000_001.CN.YOUB.HH.S        1753
         There are 4 traces recorded the event 1753, use the evIDs to get data.
-    n_data: str
+    n_data_file: str
         Noise data. n_data['waves'] yields everything already
     noise_inds: list or np.ndarray
         Indexes get used
-    csv: str
+    csv_file: str
         A csv file to get the evID from idxCatalog
     sr: int
         Sampling rate
@@ -206,9 +207,9 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
     
     """
     
-    x_data = h5py.File(x_data,'r')
-    n_data = h5py.File(n_data,'r')
-    csv = pd.read_csv(csv)
+    x_data = h5py.File(x_data_file,'r')
+    n_data = h5py.File(n_data_file,'r')
+    csv = pd.read_csv(csv_file)
     
     while True:
         # randomly select a starting index for the data batch
@@ -323,7 +324,7 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
 
 # generate batch data
 print("FIRST PASS WITH DATA GENERATOR")
-my_data=my_data_generator(32,x_data,n_data,sig_train_inds,noise_train_inds,csv,sr,std)
+my_data=my_data_generator(32,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
 #my_data=my_data_generator(128,x_data,n_data,sig_test_inds,noise_test_inds,sr,std)  # generate some testing dataset example
 x,y=next(my_data)
 
@@ -380,8 +381,8 @@ if train:
         
     csv_logger = tf.keras.callbacks.CSVLogger(model_save_file+".csv", append=True)
     # create generators
-    g_train = my_data_generator(batch_size,x_data,n_data,sig_train_inds,noise_train_inds,csv,sr,std)
-    g_valid = my_data_generator(batch_size,x_data,n_data,sig_test_inds,noise_test_inds,csv,sr,std)
+    g_train = my_data_generator(batch_size,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
+    g_valid = my_data_generator(batch_size,x_data_file,n_data_file,sig_test_inds,noise_test_inds,csv_file,sr,std)
     history=model.fit_generator(g_train,
                         steps_per_epoch=(2*len(noise_train_inds))//batch_size,
                         validation_data=g_valid,
