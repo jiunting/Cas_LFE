@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 import unet_tools
+import tensorflow.keras as keras
 import tensorflow as tf
 import argparse
 import pandas as pd
@@ -171,7 +172,10 @@ np.save('./Index/index_%s/noise_test_inds.npy'%(run_num),noise_test_inds)
 # do the shifts and make batches
 print("SETTING UP GENERATOR")
 #def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,valid=False):
-def my_data_generator(batch_size,x_data_file,n_data_file,sig_inds,noise_inds,csv_file,sr,std,valid=False):
+
+
+class data_generator(keras.utils.Sequence):
+    #######Generator should inherit the "Sequence" class in order to run multi-processing of fit_generator###########
     """
     Generator for Unet training. Modified the x_data, sig_inds part on 6/3 2022
     
@@ -184,12 +188,12 @@ def my_data_generator(batch_size,x_data_file,n_data_file,sig_inds,noise_inds,csv
     sig_inds: list or np.ndarray
         List of event index. Use this to get the keys that call h5py data.
         e.g. sig_inds[0] = 1753 (the event of catalog[1753]), then available data are csv[csv['idxCatalog']==1753]
-              famID net   sta comp PS                                       evID  idxCatalog
+            famID net   sta comp PS                                       evID  idxCatalog
                 1  CN   PFB   HH  S   2008-05-20T01:46:29.7000_001.CN.PFB.HH.S        1753
                 1  CN   SNB   BH  S   2008-05-20T01:46:29.7000_001.CN.SNB.BH.S        1753
                 1  CN   VGZ   BH  S   2008-05-20T01:46:29.7000_001.CN.VGZ.BH.S        1753
                 1  CN  YOUB   HH  S  2008-05-20T01:46:29.7000_001.CN.YOUB.HH.S        1753
-        There are 4 traces recorded the event 1753, use the evIDs to get data.
+            There are 4 traces recorded the event 1753, use the evIDs to get data.
     n_data_file: str
         Noise data. n_data['waves'] yields everything already
     noise_inds: list or np.ndarray
@@ -200,18 +204,42 @@ def my_data_generator(batch_size,x_data_file,n_data_file,sig_inds,noise_inds,csv
         Sampling rate
     std: float
         Standard deviation of the gaussian for arrival labels.
-        
+    
     OUTs
     ====
     Training or testing data mixed with signal and noise
-    
     """
+    def __init__(self,batch_size,x_data_file,n_data_file,sig_inds,noise_inds,csv_file,sr,std,valid=False):
+        self.batch_size = batch_size
+        self.x_data_file = x_data_file
+        self.n_data_file = n_data_file
+        self.sig_inds = sig_inds
+        self.noise_inds = noise_inds
+        self.csv_file = csv_file
+        self.sr = sr
+        self.std = std
+        self.valid = valid
     
-    x_data = h5py.File(x_data_file,'r')
-    n_data = h5py.File(n_data_file,'r')
-    csv = pd.read_csv(csv_file)
+    def __len__(self):
+        #length of input data and noise
+        return len(self.sig_inds), len(self.noise_inds)
     
-    while True:
+    def __getitem__(self,index):
+        # index is a dummy since each traces will be shifted and so is different
+        batch_size = self.batch_size
+        x_data_file = self.x_data_file
+        sig_inds = self.sig_inds
+        n_data_file = self.n_data_file
+        noise_inds = self.noise_inds
+        csv_file = self.csv_file
+        sr = self.sr
+        std = self.std
+        valid = self.valid
+        
+        x_data = h5py.File(x_data_file,'r')
+        n_data = h5py.File(n_data_file,'r')
+        csv = pd.read_csv(csv_file)
+        #while True:
         # randomly select a starting index for the data batch
         #start_of_data_batch=np.random.choice(len(sig_inds)-batch_size//2)
         # randomly select a starting index for the noise batch
@@ -320,13 +348,13 @@ def my_data_generator(batch_size,x_data_file,n_data_file,sig_inds,noise_inds,csv
                                           new_batch_val[ii,:,1].reshape(-1,1), new_batch_sign[ii,:,1].reshape(-1,1),
                                           new_batch_val[ii,:,2].reshape(-1,1), new_batch_sign[ii,:,2].reshape(-1,1)] ) )
         batch_out=np.array(batch_out)
-        yield(batch_out,new_batch_target)
+        return batch_out,new_batch_target
 
 # generate batch data
 print("FIRST PASS WITH DATA GENERATOR")
-my_data=my_data_generator(32,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
+my_data=data_generator(32,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
 #my_data=my_data_generator(128,x_data,n_data,sig_test_inds,noise_test_inds,sr,std)  # generate some testing dataset example
-x,y=next(my_data)
+x,y = my_data.__getitem__(999)
 
 #np.save('Xtest_%s.npy'%(run_num),x)
 #np.save('ytest_%s.npy'%(run_num),y)
@@ -381,8 +409,8 @@ if train:
         
     csv_logger = tf.keras.callbacks.CSVLogger(model_save_file+".csv", append=True)
     # create generators
-    g_train = my_data_generator(batch_size,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
-    g_valid = my_data_generator(batch_size,x_data_file,n_data_file,sig_test_inds,noise_test_inds,csv_file,sr,std)
+    g_train = data_generator(batch_size,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
+    g_valid = data_generator(batch_size,x_data_file,n_data_file,sig_test_inds,noise_test_inds,csv_file,sr,std)
     history=model.fit_generator(g_train,
                         steps_per_epoch=(2*len(noise_train_inds))//batch_size,
                         validation_data=g_valid,
