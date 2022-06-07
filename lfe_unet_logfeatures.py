@@ -6,6 +6,8 @@ Created on Mon Nov  9 19:54:21 2020
 Train a CNN to detect LFEs please
 
 @author: amt
+
+6/2 2022: Train the model with tracking evID, modified by Tim Lin
 """
 
 import h5py
@@ -15,6 +17,7 @@ from scipy import signal
 import unet_tools
 import tensorflow as tf
 import argparse
+import pandas as pd
 
 # parse arguments
 parser = argparse.ArgumentParser()
@@ -88,12 +91,21 @@ print("LOADING DATA")
 
 #=========start new training==========
 #test 001~004 same as 12~15, but use normalized data (S waves)
-n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r')
-x_data = h5py.File('Cascadia_lfe_QC_rmean_norm.h5', 'r')
+#n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r')
+#x_data = h5py.File('Cascadia_lfe_QC_rmean_norm.h5', 'r')
 
 #test 005~008 save as 001~004 but P waves
 #n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r')
 #x_data = h5py.File('Cascadia_lfe_QC_rmean_norm_P.h5', 'r')
+
+
+#========New training on 2022 6========
+#test S00X~S00X or P00X~P00X
+x_data = h5py.File('Data_QC_rmean_norm/merged20220602_S.h5', 'r') # for S wave
+csv = pd.read_csv('Data_QC_rmean_norm/merged20220602_S.csv')
+
+n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r') # noise part is the same
+
 
 
 
@@ -104,10 +116,16 @@ if drop:
     
 # MAKE TRAINING AND TESTING DATA
 print("MAKE TRAINING AND TESTING DATA")
+print(" Partitioning Based on event(6/3 2022)")
 np.random.seed(0)
-siginds=np.arange(x_data['waves'].shape[0])
+# Signal group by the same event
+uniq_events = list(set(csv['idxCatalog']))
+
+#siginds=np.arange(x_data['waves'].shape[0])
 noiseinds=np.arange(n_data['waves'].shape[0])
-np.random.shuffle(siginds)
+
+#np.random.shuffle(siginds)
+np.random.shuffle(uniq_events)
 np.random.shuffle(noiseinds)
 
 #sig_train_inds=np.sort(siginds[:int(0.75*len(siginds))])
@@ -115,30 +133,32 @@ np.random.shuffle(noiseinds)
 #sig_test_inds=np.sort(siginds[int(0.75*len(siginds)):])
 #noise_test_inds=np.sort(noiseinds[int(0.75*len(noiseinds)):])
 
-# modified 04/02 2021 Tim make sure data/noise have same traces
-Len_siginds = len(siginds) #length of siginds
-Len_noiseinds = len(noiseinds) #length of noiseinds
-data_len = np.min([Len_siginds,Len_noiseinds])
-sig_train_inds=np.sort(siginds[:int(0.75*data_len)])
-noise_train_inds=np.sort(noiseinds[:int(0.75*data_len)])
-sig_test_inds=np.sort(siginds[int(0.75*data_len):])
-noise_test_inds=np.sort(noiseinds[int(0.75*data_len):])
-'''
-# modified 06/20 2021 Tim make 70/20/10 data split (it was 75/25)
-sig_train_inds=np.sort(siginds[:int(0.7*data_len)])
-noise_train_inds=np.sort(noiseinds[:int(0.7*data_len)])
-sig_valid_inds=np.sort(siginds[int(0.7*data_len):int(0.9*data_len)])
-noise_valid_inds=np.sort(noiseinds[int(0.7*data_len):int(0.9*data_len)])
-sig_test_inds=np.sort(siginds[int(0.9*data_len):int(1*data_len)])
-noise_test_inds=np.sort(noiseinds[int(0.9*data_len):int(1*data_len)])
-'''
+# 75-25 training and testing split on events. This also suggests roughly same 75-25 splitting on traces
+len_siginds = len(uniq_events) #length of unique events
+sig_train_inds = uniq_events[:int(len_siginds*0.75)]
+sig_test_inds =  uniq_events[int(len_siginds*0.75):]
+
+# number of training signals = events * number of records per event
+#len_siginds = sum([sum(csv['idxCatalog']==i) for i in sig_train_inds])# too slow! just estimate
+len_siginds = int((len(csv)/len(uniq_events)) * len(sig_train_inds)) # traces per event
+
+
+# modified 04/02 2021 Tim: make sure data/noise have roughtly same amount
+len_noiseinds = len(noiseinds) #length of noiseinds
+data_len = np.min([len_siginds,len_noiseinds]) # I always have more data than signal
+
+# noise part
+noise_train_inds = np.sort(noiseinds[:int(0.75*data_len)])
+noise_test_inds = np.sort(noiseinds[int(0.75*data_len):data_len])
+
+
 # save training/testing indexes for later analysis
 import os
 #check file/dir exist,otherwise mkdir
 if not(os.path.exists('./Index/index_%s'%(run_num))):
     os.makedirs('./Index/index_%s'%(run_num))
 
-np.save('./Index/index_%s/sig_train_inds.npy'%(run_num),sig_train_inds)
+np.save('./Index/index_%s/sig_train_inds.npy'%(run_num),sig_train_inds) # the indexes are event idx from the catalog. one idx can have many traces
 np.save('./Index/index_%s/noise_train_inds.npy'%(run_num),noise_train_inds)
 #np.save('./Index/index_%s/sig_valid_inds.npy'%(run_num),sig_valid_inds)
 #np.save('./Index/index_%s/noise_valid_inds.npy'%(run_num),noise_valid_inds)
@@ -146,24 +166,95 @@ np.save('./Index/index_%s/sig_test_inds.npy'%(run_num),sig_test_inds)
 np.save('./Index/index_%s/noise_test_inds.npy'%(run_num),noise_test_inds)
 
 
-
 # do the shifts and make batches
 print("SETTING UP GENERATOR")
-def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,sr,std,valid=False):
+#def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,valid=False):
+def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,valid=False):
+    """
+    Generator for Unet training. Modified the x_data, sig_inds part on 6/3 2022
+    
+    INPUTs
+    ======
+    batch_size: int
+        Batch size for each training step
+    x_data: object
+        h5py object for getting data. Can be called by the key in the .csv file
+    sig_inds: list or np.ndarray
+        List of event index. Use this to get the keys that call h5py data.
+        e.g. sig_inds[0] = 1753 (the event of catalog[1753]), then available data are csv[csv['idxCatalog']==1753]
+              famID net   sta comp PS                                       evID  idxCatalog
+                1  CN   PFB   HH  S   2008-05-20T01:46:29.7000_001.CN.PFB.HH.S        1753
+                1  CN   SNB   BH  S   2008-05-20T01:46:29.7000_001.CN.SNB.BH.S        1753
+                1  CN   VGZ   BH  S   2008-05-20T01:46:29.7000_001.CN.VGZ.BH.S        1753
+                1  CN  YOUB   HH  S  2008-05-20T01:46:29.7000_001.CN.YOUB.HH.S        1753
+        There are 4 traces recorded the event 1753, use the evIDs to get data.
+    n_data: object
+        Noise data. n_data['waves'] yields everything already
+    noise_inds: list or np.ndarray
+        Indexes get used
+    csv: pd.DataFrame
+        A csv dataframe to get the evID from idxCatalog
+    sr: int
+        Sampling rate
+    std: float
+        Standard deviation of the gaussian for arrival labels.
+        
+    OUTs
+    ====
+    Training or testing data mixed with signal and noise
+    
+    """
     while True:
         # randomly select a starting index for the data batch
-        start_of_data_batch=np.random.choice(len(sig_inds)-batch_size//2)
+        #start_of_data_batch=np.random.choice(len(sig_inds)-batch_size//2)
         # randomly select a starting index for the noise batch
-        start_of_noise_batch=np.random.choice(len(noise_inds)-batch_size//2)
+        #start_of_noise_batch=np.random.choice(len(noise_inds)-batch_size//2)
+        np.random.shuffle(sig_inds)
+        np.random.shuffle(noise_inds)
+        
         if valid:
             start_of_noise_batch=0
             start_of_data_batch=0
-        # get range of indicies from data
-        datainds=sig_inds[start_of_data_batch:start_of_data_batch+batch_size//2]
-        # get range of indicies from noise
-        noiseinds=noise_inds[start_of_noise_batch:start_of_noise_batch+batch_size//2]
+        # get range of indicies for data and noise. Data have been shuffled, so just select from begining to half batch size
+        datainds = sig_inds[:batch_size//2] # NOTE that this is the index, each index has at least one id which will be processed later
+        noiseinds = noise_inds[:batch_size//2]
+        noiseinds.sort()
+        
         #length of each component
-        nlen=int(sr*30)+1
+        nlen = int(sr*30)+1
+        
+        # Get keys from looping each datainds until getting enough data traces i.e. batch_size//2
+        accum_n = 0
+        comp1_data = []
+        comp2_data = []
+        comp3_data = []
+        for tmpidx in datainds:
+            tmp_keys = csv[csv['idxCatalog']==tmpidx]['evID']
+            n = len(tmp_keys) #number of data to be added
+            if (accum_n + n) < batch_size//2:
+                for k in tmp_keys:
+                    data_all = x_data['waves/'+k]
+                    comp1_data.append(data_all[:nlen])
+                    comp2_data.append(data_all[nlen:2*nlen])
+                    comp3_data.append(data_all[2*nlen:])
+                accum_n += n
+            else:
+                res_n = batch_size//2 - accum_n # number of traces needed
+                print('  number of traces remaining...',res_n)
+                tmp_keys = [k for k in tmp_keys]
+                np.random.shuffle(tmp_keys)
+                print('    randomly draw from %d keys'%len(tmp_keys))
+                for i in range(res_n):
+                    print('  adding',i+1)
+                    data_all = x_data['waves/'+tmp_keys[i]]
+                    comp1_data.append(data_all[:nlen])
+                    comp2_data.append(data_all[nlen:2*nlen])
+                    comp3_data.append(data_all[2*nlen:])
+                break
+        assert len(comp1_data)==batch_size//2, "size incorrect!"
+        comp1_data = np.array(comp1_data)
+        comp2_data = np.array(comp2_data)
+        comp3_data = np.array(comp3_data)
         # grab batch
         #=====added these lines by Tim=====
         #normalize the data and noise
@@ -173,14 +264,14 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,sr,std,valid=
         #comp2=np.concatenate((data_all[:,nlen:2*nlen],noise_all[:,nlen:2*nlen]))
         #comp3=np.concatenate((data_all[:,2*nlen:],noise_all[:,2*nlen:]))
         #==================================
-        comp1=np.concatenate((x_data['waves'][datainds,:nlen],n_data['waves'][noiseinds,:nlen]))
-        comp2=np.concatenate((x_data['waves'][datainds,nlen:2*nlen],n_data['waves'][noiseinds,nlen:2*nlen]))
-        comp3=np.concatenate((x_data['waves'][datainds,2*nlen:],n_data['waves'][noiseinds,2*nlen:]))
+        comp1=np.concatenate((comp1_data,n_data['waves'][noiseinds,:nlen]))
+        comp2=np.concatenate((comp2_data,n_data['waves'][noiseinds,nlen:2*nlen]))
+        comp3=np.concatenate((comp3_data,n_data['waves'][noiseinds,2*nlen:]))
         # make target data vector for batch
         target=np.concatenate((np.ones_like(datainds),np.zeros_like(noiseinds)))
         # make structure to hold target functions
         batch_target=np.zeros((batch_size,nlen))
-        # shuffle things (not sure if this is needed)
+        # shuffle things so not always signal first and then noise
         inds=np.arange(batch_size)
         np.random.shuffle(inds)
         comp1=comp1[inds,:]
@@ -226,7 +317,7 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,sr,std,valid=
 
 # generate batch data
 print("FIRST PASS WITH DATA GENERATOR")
-my_data=my_data_generator(32,x_data,n_data,sig_train_inds,noise_train_inds,sr,std)
+my_data=my_data_generator(32,x_data,n_data,sig_train_inds,noise_train_inds,csv,sr,std)
 #my_data=my_data_generator(128,x_data,n_data,sig_test_inds,noise_test_inds,sr,std)  # generate some testing dataset example
 x,y=next(my_data)
 
@@ -282,9 +373,9 @@ if train:
         print('Training model and saving results to '+model_save_file)
         
     csv_logger = tf.keras.callbacks.CSVLogger(model_save_file+".csv", append=True)
-    history=model.fit_generator(my_data_generator(batch_size,x_data,n_data,sig_train_inds,noise_train_inds,sr,std),
+    history=model.fit_generator(my_data_generator(batch_size,x_data,n_data,sig_train_inds,noise_train_inds,csv,sr,std),
                         steps_per_epoch=(len(sig_train_inds)+len(noise_train_inds))//batch_size,
-                        validation_data=my_data_generator(batch_size,x_data,n_data,sig_test_inds,noise_test_inds,sr,std),
+                        validation_data=my_data_generator(batch_size,x_data,n_data,sig_test_inds,noise_test_inds,csv,sr,std),
                         validation_steps=(len(sig_test_inds)+len(noise_test_inds))//batch_size,
                         #validation_data=my_data_generator(batch_size,x_data,n_data,sig_valid_inds,noise_valid_inds,sr,std),
                         #validation_steps=(len(sig_valid_inds)+len(noise_valid_inds))//batch_size,
