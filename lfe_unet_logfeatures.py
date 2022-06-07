@@ -53,6 +53,8 @@ epsilon=1e-6
 
 
 
+
+
 # LOAD THE DATA
 print("LOADING DATA")
 #n_data = h5py.File('Cascadia_noise_data_norm.h5', 'r')
@@ -221,11 +223,12 @@ class data_generator(keras.utils.Sequence):
         self.valid = valid
     
     def __len__(self):
-        #length of input data and noise
-        return len(self.sig_inds), len(self.noise_inds)
+        #length of noise
+        return len(self.noise_inds)
     
     def __getitem__(self,index):
         # index is a dummy since each traces will be shifted and so is different
+        np.random.seed()
         batch_size = self.batch_size
         x_data_file = self.x_data_file
         sig_inds = self.sig_inds
@@ -416,7 +419,7 @@ if train:
                         validation_data=g_valid,
                         validation_steps=(2*len(noise_test_inds))//batch_size,
                         use_multiprocessing=True,
-                        workers=64,
+                        workers=8,
                         epochs=epos,
                         callbacks=[model_checkpoint_callback,csv_logger])
     model.save_weights("./"+model_save_file)
