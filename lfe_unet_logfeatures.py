@@ -101,11 +101,12 @@ print("LOADING DATA")
 
 #========New training on 2022 6========
 #test S00X~S00X or P00X~P00X
-x_data = h5py.File('Data_QC_rmean_norm/merged20220602_S.h5', 'r') # for S wave
-csv = pd.read_csv('Data_QC_rmean_norm/merged20220602_S.csv')
-
-n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r') # noise part is the same
-
+#x_data = h5py.File('Data_QC_rmean_norm/merged20220602_S.h5', 'r') # for S wave
+#csv = pd.read_csv('Data_QC_rmean_norm/merged20220602_S.csv')
+#n_data = h5py.File('Cascadia_noise_QC_rmean_norm.h5', 'r') # noise part is the same
+x_data = "Data_QC_rmean_norm/merged20220602_S.h5"
+csv = "Data_QC_rmean_norm/merged20220602_S.csv"
+n_data = "Cascadia_noise_QC_rmean_norm.h5"
 
 
 
@@ -177,8 +178,8 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
     ======
     batch_size: int
         Batch size for each training step
-    x_data: object
-        h5py object for getting data. Can be called by the key in the .csv file
+    x_data: str
+        Name for big h5py file with all the data. Can be called by the key in the .csv file
     sig_inds: list or np.ndarray
         List of event index. Use this to get the keys that call h5py data.
         e.g. sig_inds[0] = 1753 (the event of catalog[1753]), then available data are csv[csv['idxCatalog']==1753]
@@ -188,12 +189,12 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
                 1  CN   VGZ   BH  S   2008-05-20T01:46:29.7000_001.CN.VGZ.BH.S        1753
                 1  CN  YOUB   HH  S  2008-05-20T01:46:29.7000_001.CN.YOUB.HH.S        1753
         There are 4 traces recorded the event 1753, use the evIDs to get data.
-    n_data: object
+    n_data: str
         Noise data. n_data['waves'] yields everything already
     noise_inds: list or np.ndarray
         Indexes get used
-    csv: pd.DataFrame
-        A csv dataframe to get the evID from idxCatalog
+    csv: str
+        A csv file to get the evID from idxCatalog
     sr: int
         Sampling rate
     std: float
@@ -204,6 +205,11 @@ def my_data_generator(batch_size,x_data,n_data,sig_inds,noise_inds,csv,sr,std,va
     Training or testing data mixed with signal and noise
     
     """
+    
+    x_data = h5py.File(x_data,'r')
+    n_data = h5py.File(n_data,'r')
+    csv = pd.read_csv(csv)
+    
     while True:
         # randomly select a starting index for the data batch
         #start_of_data_batch=np.random.choice(len(sig_inds)-batch_size//2)
@@ -373,13 +379,17 @@ if train:
         print('Training model and saving results to '+model_save_file)
         
     csv_logger = tf.keras.callbacks.CSVLogger(model_save_file+".csv", append=True)
-    history=model.fit_generator(my_data_generator(batch_size,x_data,n_data,sig_train_inds,noise_train_inds,csv,sr,std),
-                        steps_per_epoch=(len(sig_train_inds)+len(noise_train_inds))//batch_size,
-                        validation_data=my_data_generator(batch_size,x_data,n_data,sig_test_inds,noise_test_inds,csv,sr,std),
-                        validation_steps=(len(sig_test_inds)+len(noise_test_inds))//batch_size,
-                        #validation_data=my_data_generator(batch_size,x_data,n_data,sig_valid_inds,noise_valid_inds,sr,std),
-                        #validation_steps=(len(sig_valid_inds)+len(noise_valid_inds))//batch_size,
-                        epochs=epos, callbacks=[model_checkpoint_callback,csv_logger])
+    # create generators
+    g_train = my_data_generator(batch_size,x_data,n_data,sig_train_inds,noise_train_inds,csv,sr,std)
+    g_valid = my_data_generator(batch_size,x_data,n_data,sig_test_inds,noise_test_inds,csv,sr,std)
+    history=model.fit_generator(g_train,
+                        steps_per_epoch=(2*len(noise_train_inds))//batch_size,
+                        validation_data=g_valid,
+                        validation_steps=(2*len(noise_test_inds))//batch_size,
+                        use_multiprocessing=True,
+                        workers=64,
+                        epochs=epos,
+                        callbacks=[model_checkpoint_callback,csv_logger])
     model.save_weights("./"+model_save_file)
     #np.save('./Test'+run_num+'.npy',history.history) #training losses will also be in .csv file
 else:
