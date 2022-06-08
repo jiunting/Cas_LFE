@@ -337,10 +337,15 @@ class data_generator(keras.utils.Sequence):
         for ii,offset in enumerate(time_offset):
             bin_offset=int(offset*sr) #HZ sampling Frequency
             start_bin=bin_offset 
-            end_bin=start_bin+int(winsize*sr) 
-            new_batch[ii,:,0]=comp1[ii,start_bin:end_bin]
-            new_batch[ii,:,1]=comp2[ii,start_bin:end_bin]
-            new_batch[ii,:,2]=comp3[ii,start_bin:end_bin]
+            end_bin=start_bin+int(winsize*sr)
+            c1 = comp1[ii,start_bin:end_bin]
+            c2 = comp2[ii,start_bin:end_bin]
+            c3 = comp3[ii,start_bin:end_bin]
+            # normalize to make sure max is 1 but keep the ratio
+            nor_val = max(max(np.abs(c1)), max(np.abs(c2)), max(np.abs(c3)))
+            new_batch[ii,:,0]=c1/nor_val
+            new_batch[ii,:,1]=c2/nor_val
+            new_batch[ii,:,2]=c3/nor_val
             new_batch_target[ii,:]=batch_target[ii,start_bin:end_bin]
         # does feature log, add additional channel for sign of log(abs(x))
         new_batch_sign=np.sign(new_batch)
@@ -357,10 +362,9 @@ class data_generator(keras.utils.Sequence):
 print("FIRST PASS WITH DATA GENERATOR")
 my_data=data_generator(32,x_data_file,n_data_file,sig_train_inds,noise_train_inds,csv_file,sr,std)
 #my_data=my_data_generator(128,x_data,n_data,sig_test_inds,noise_test_inds,sr,std)  # generate some testing dataset example
-x,y = my_data.__getitem__(999)
-
-#np.save('Xtest_%s.npy'%(run_num),x)
-#np.save('ytest_%s.npy'%(run_num),y)
+X,y = my_data.__getitem__(0)
+np.save('Xtest_%s.npy'%(run_num),X)
+np.save('ytest_%s.npy'%(run_num),y)
 #import sys 
 #sys.exit()
 
