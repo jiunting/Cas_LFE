@@ -278,12 +278,12 @@ class data_generator(keras.utils.Sequence):
                 accum_n += n
             else:
                 res_n = batch_size//2 - accum_n # number of traces needed
-                print('  number of traces remaining...',res_n)
+                #print('  number of traces remaining...',res_n)
                 tmp_keys = [k for k in tmp_keys]
                 np.random.shuffle(tmp_keys)
-                print('    randomly draw from %d keys'%len(tmp_keys))
+                #print('    randomly draw from %d keys'%len(tmp_keys))
                 for i in range(res_n):
-                    print('  adding',i+1)
+                    #print('  adding',i+1)
                     data_all = x_data['waves/'+tmp_keys[i]]
                     comp1_data.append(data_all[:nlen])
                     comp2_data.append(data_all[nlen:2*nlen])
@@ -402,7 +402,8 @@ checkpoint_filepath = './checks/'+model_save_file+'_{epoch:04d}.ckpt'
 model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
     filepath=checkpoint_filepath, save_weights_only=True, verbose=1,
     #monitor='val_acc', mode='max', save_best_only=True)
-    monitor='val_accuracy', mode='max', save_best_only=True)
+    #monitor='val_accuracy', mode='max', save_best_only=True)
+    monitor='val_loss', mode='min', save_best_only=False,period=1)
 
 # TRAIN THE MODEL
 print("TRAINING!!!")
