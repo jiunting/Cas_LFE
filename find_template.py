@@ -17,7 +17,7 @@ from obspy import UTCDateTime
 import datetime
 import glob
 from typing import TypedDict, Dict
-
+import os
 
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
@@ -103,7 +103,7 @@ def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102"
         DD.trim(starttime=t1-1, endtime=t2+1, nearest_sample=True, pad=True, fill_value=0)
         DD.interpolate(sampling_rate=sampl, starttime=t1,method='linear')
         DD.trim(starttime=t1, endtime=t2, nearest_sample=True, pad=True, fill_value=0)
-    assert len(DD[0].data)==3001, "cut data not exactly 3001 points"
+    #assert len(DD[0].data)==3001, "cut data not exactly 3001 points"
     return DD[0].data
 
 
@@ -274,6 +274,9 @@ plt.show()
 
 
 # =====select detections that are not in the original catalog and see if that's real=====
+#cross-correlation "Coef" cunction for long v.s. short timeseries
+from obspy.signal.cross_correlation import correlate_template
+
 #manually select 20060301-20061101
 filt_idx = np.where((sav_k>=UTCDateTime('20060301')) & (sav_k<=UTCDateTime('20061101')))[0]
 filt_sav_k = sav_k[filt_idx]
@@ -284,6 +287,7 @@ for T0 in filt_sav_k:
     # find available stations
     T0_str = T0.strftime('%Y-%m-%dT%H:%M:%S.%f')+'Z'
     print(' - stations have detections:',all_T[T0_str]['sta'])
+    templates = {}
     for sta in all_T[T0_str]['sta']:
         net = sta.split('.')[0]
         sta = sta.split('.')[1]
@@ -296,4 +300,16 @@ for T0 in filt_sav_k:
         # find the file name
         t1_fileE = dataDir+'/'+T0.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
         t2_fileE = dataDir+'/'+(T0+template_length).strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
-        print(t1_fileE,t2_fileE)
+        if (not os.path.exists(t1_fileE)) or (not os.path.exists(t2_fileE)):
+            continue
+        if t1_fileE==t2_fileE:
+            E = data_process(t1_fileE,sampl=sampl)
+            tempE = data_cut(E,Data2='',t1=T0,t2=T0+template_length)
+            templates[net+'.'+sta] = tempE
+            # some test
+            CCF = correlate_template(E[0].data,tempE)
+            assert UTCDateTime(T0.year,T0.month,T0.day)+np.argmax(CCF)/sampl==T0
+        else:
+            continue # for now, just skip the data across days
+    #break
+            
