@@ -57,7 +57,9 @@ cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
 
 # load model detection .csv file
 #csvs = glob.glob('./Detections_S_new/*.csv')
-csvs = glob.glob('./Detections_P/*.csv')
+#csvs = glob.glob('./Detections_P/*.csv')
+csvs = glob.glob('./Detections_S_new/*.csv')
+#csvs = glob.glob('./Detections_P_new/*.csv')
 
 thres = 0.1 #plot everything >= thres
 
@@ -90,13 +92,17 @@ for n,k in enumerate(sav_detcTime.keys()):
     
 plt.yticks([],[])
 
+#plt.xlim([datetime.datetime(2005,1,1), datetime.datetime(2005,1,30)])
+
 #plt.savefig('detection_tcs_all_y%.1f.png'%(thres))
 #plt.savefig('detection_tcs_all_y%.1f.pdf'%(thres))
 #plt.savefig('detection_new_tcs_all_y%.1f.png'%(thres))
 #plt.savefig('detection_new_tcs_all_y%.1f.pdf'%(thres))
 
-plt.savefig('detection_tcs_all_P_y0.1.png')
-plt.savefig('detection_tcs_all_P_y0.1.pdf')
+#plt.savefig('detection_tcs_all_P_y0.1.png')
+#plt.savefig('detection_tcs_all_P_y0.1.pdf')
+plt.savefig('detection_tcs_all_S_new_y0.1_0906.png',dpi=300)
+#plt.savefig('detection_tcs_all_P_new_y0.1_0906.png',dpi=300)
 plt.close()
 
 

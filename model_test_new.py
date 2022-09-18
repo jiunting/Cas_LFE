@@ -131,12 +131,12 @@ std = 0.4
 #large = 1.0
 #run_num = 'S003'
 #large = 2.0
-run_num = 'P001'
-large = 0.5
+#run_num = 'P001'
+#large = 0.5
 #run_num = 'P002'
 #large = 1.0
-#run_num = 'P003'
-#large = 2.0
+run_num = 'P003'
+large = 2.0
 #x_data_file = "Data_QC_rmean_norm/merged20220602_S.h5"
 #csv_file = "Data_QC_rmean_norm/merged20220602_S.csv"
 x_data_file = "Data_QC_rmean_norm/merged20220602_P.h5"
@@ -181,10 +181,10 @@ model.load_weights(chks[-1].replace('.index',''))
 
 
 # parameters for model testing
-Ntests = 10 # number of testing
+Ntests = 20 # number of testing
 winsize=15   # winsize for input data in seconds
 rnd_start = True # for each trace, randomly cut the time series. If False: always centered at arrival(center of the 30 sec trace)
-sig_max = 2000 # number of sig/noise data, note that noise data has the same number with sig
+sig_max = 1000 # number of sig/noise data, note that noise data has the same number with sig
 mag_range = (0,3) #magnitude range to be tested
 dist_range = (0,100) #distance range to be tested
 
@@ -193,11 +193,11 @@ nlen = int(sr*30)+1
 
 versions = ['v1','v2','v3']
 mag_ranges = [(0,3),(2.2,3),(0,3)]
-dist_ranges = [(0,100),(0,100),(0,10)]
+dist_ranges = [(0,100),(0,100),(0,30)]
 sav_stats = {}
 for i_ver, version in enumerate(versions):
     print('Version:',version)
-    sav_stats.update({version:{'fpr':[],'tpr':[],'thresholds':[],'AUC':[]}})
+    sav_stats.update({version:{'fpr':[],'tpr':[],'thresholds':[],'AUC':[],'prec':[],'acc':[]}})
     # ===== Start generating data =====
     for Ntest in range(Ntests):
         print(' %d/%d tests'%(Ntest+1,Ntests))
@@ -282,15 +282,18 @@ for i_ver, version in enumerate(versions):
         y = np.array(y)
         y_pred = model.predict(X)
         #1. simple classification problem
-        fpr, tpr, thresholds = roc_curve(np.max(y,axis=1),np.max(y_pred,axis=1))
-        #sav_threshold, sav_TPR, sav_FPR, sav_prec, sav_acc, AUC = cal_metrics(y, y_pred, thresholds)
+        fpr, tpr, thresholds = roc_curve(np.max(y,axis=1),np.max(y_pred,axis=1)) # tpr is recall
+        # calculate arrival time misfit
+        _thresholds, _TPR, _FPR, prec, acc, _AUC = cal_metrics(y, y_pred, thresholds) # underlines are the same thing
         AUC = auc(fpr, tpr)
         sav_stats[version]['fpr'].append(fpr)
         sav_stats[version]['tpr'].append(tpr)
         sav_stats[version]['thresholds'].append(thresholds)
         sav_stats[version]['AUC'].append(AUC)
+        sav_stats[version]['prec'].append(np.array(prec))
+        sav_stats[version]['acc'].append(np.array(acc))
         #2. calculate arrival time misfit
-        #sav_threshold, sav_TPR, sav_FPR, sav_prec, sav_acc, AUC = cal_metrics(y, y_pred, thresholds, dt=2.0) #2 s tolarance
+        #_thresholds, _TPR, _FPR, prec, acc, _AUC = cal_metrics(y, y_pred, thresholds) #2 s tolarance
         #arr_idx_y = np.array([np.where(iy==max(iy))[0][0] if max(iy)==1 else -1 for iy in y])
 
 np.save('./Stats/model_test_%s.npy'%(run_num),sav_stats)
@@ -312,34 +315,71 @@ for ik,k in enumerate(sav_stats.keys()):
         interp_tpr = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['fpr'][i], sav_stats[k]['tpr'][i])
         sav_fpr.append(np.arange(-0.001,1,0.001))
         sav_tpr.append(interp_tpr)
-        #plt.plot(sav_stats[k]['fpr'][i], sav_stats[k]['tpr'][i],'k.')
-        #plt.plot(np.arange(-0.001,1,0.001), interp_tpr,'r')
+    # interp prec, recall, and acc
+    sav_prec = []
+    sav_recall = []
+    sav_acc = []
+    for i in range(len(sav_stats[k]['AUC'])):
+        sidx = np.argsort(sav_stats[k]['thresholds'][i])
+        interp_prec = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['thresholds'][i][sidx], sav_stats[k]['prec'][i][sidx]) 
+        interp_recall = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['thresholds'][i][sidx], sav_stats[k]['tpr'][i][sidx]) 
+        interp_acc = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['thresholds'][i][sidx], sav_stats[k]['acc'][i][sidx]) 
+        sav_prec.append(interp_prec)
+        sav_recall.append(interp_recall)
+        sav_acc.append(interp_acc)
     # calculate mean, and std
     sav_fpr = np.array(sav_fpr)
     sav_tpr = np.array(sav_tpr)
+    sav_prec = np.array(sav_prec)
+    sav_recall = np.array(sav_recall)
+    sav_acc = np.array(sav_acc)
     mean_fpr = np.mean(sav_fpr,axis=0)
     mean_tpr = np.mean(sav_tpr,axis=0)
+    mean_prec = np.mean(sav_prec,axis=0)
+    mean_recall = np.mean(sav_recall,axis=0)
+    mean_acc = np.mean(sav_acc,axis=0)
     std_fpr = np.std(sav_fpr,axis=0)
     std_tpr = np.std(sav_tpr,axis=0)
+    std_prec = np.std(sav_prec,axis=0)
+    std_recall = np.std(sav_recall,axis=0)
+    std_acc = np.std(sav_acc,axis=0)
+    #plotting
+    plt.subplot(1,2,1)
+    #only plot v1
+    if k=='v1':
+        plt.plot(np.arange(-0.001,1,0.001), mean_prec * 100,'--',color='orange',label='Precision (%)')
+        plt.plot(np.arange(-0.001,1,0.001), mean_recall * 100,'-.',color='red',markersize=1, label='Recall (%)')
+        plt.plot(np.arange(-0.001,1,0.001), mean_acc * 100,'-',color='blue',label='Accuracy (%)')
+    plt.subplot(1,2,2)
+    plt.plot([0,1],[0,1],'k--',lw=2)
     plt.plot(mean_fpr, mean_tpr, colors[ik],lw = 3, alpha=0.8,label=r'%s, AUC=%.2f$\pm$%.3f'%(k,np.mean(sav_stats[k]['AUC']),np.std(sav_stats[k]['AUC'])) )
     fill_upper = np.minimum(mean_tpr + std_tpr, 1)
     fill_lower = np.minimum(mean_tpr - std_tpr, 1)
     plt.fill_between(mean_fpr,fill_upper, fill_lower, color=colors[ik], alpha=0.2)
-    #plt.plot(mean_fpr, mean_tpr+std_tpr, 'b--',lw=3, alpha=0.8)
-    #plt.plot(mean_fpr, mean_tpr-std_tpr, 'b--',lw=3, alpha=0.8)
-    #plt.savefig('check_pred.png')
-    #plt.close()
 
-plt.xlim([0,1])
-plt.ylim([0,1])
-plt.xlabel('FPR',fontsize=14)
-plt.ylabel('TPR',fontsize=14)
+plt.subplot(1,2,1)
+plt.grid(True)
+plt.xlim([-0.01,1.01])
+plt.ylim([0,101])
+ax1 = plt.gca()
+ax1.tick_params(pad=1.5,length=0.8,size=0.5)
+plt.xlabel('Threshold',fontsize=14,labelpad=0)
 plt.legend()
+plt.subplot(1,2,2)
+plt.grid(True)
+plt.xlim([-0.01,1.01])
+plt.ylim([-0.01,1.01])
+ax1 = plt.gca()
+ax1.tick_params(pad=1.5,length=0.8,size=0.5)
+plt.xlabel('FPR',fontsize=14,labelpad=0)
+plt.ylabel('TPR',fontsize=14,labelpad=0)
+plt.legend()
+plt.subplots_adjust(left=0.08,top=0.9,right=0.98,bottom=0.12,wspace=0.24)
 plt.savefig('./Stats/Stats_%s.png'%(run_num),dpi=150)
 plt.close()
 
 
-
+"""
 # ===== plot performance curves from .npy files=====
 colors = ['b','g','m']
 run_nums = ['S001','S002','S003','P001','P002','P003']
@@ -355,25 +395,62 @@ for run_num in run_nums:
             interp_tpr = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['fpr'][i], sav_stats[k]['tpr'][i])
             sav_fpr.append(np.arange(-0.001,1,0.001))
             sav_tpr.append(interp_tpr)
+        # interp prec, recall, and acc
+        sav_prec = []
+        sav_recall = []
+        sav_acc = []
+        for i in range(len(sav_stats[k]['AUC'])):
+            interp_prec = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['thresholds'][i], sav_stats[k]['prec'][i]) 
+            interp_recall = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['thresholds'][i], sav_stats[k]['tpr'][i]) 
+            interp_acc = np.interp(np.arange(-0.001,1,0.001), sav_stats[k]['thresholds'][i], sav_stats[k]['acc'][i]) 
+            sav_prec.append(interp_prec)
+            sav_recall.append(interp_recall)
+            sav_acc.append(interp_acc)
         # calculate mean, and std
         sav_fpr = np.array(sav_fpr)
         sav_tpr = np.array(sav_tpr)
+        sav_prec = np.array(sav_prec)
+        sav_recall = np.array(sav_recall)
+        sav_acc = np.array(sav_acc)
         mean_fpr = np.mean(sav_fpr,axis=0)
         mean_tpr = np.mean(sav_tpr,axis=0)
+        mean_prec = np.mean(sav_prec,axis=0)
+        mean_recall = np.mean(sav_recall,axis=0)
+        mean_acc = np.mean(sav_acc,axis=0)
         std_fpr = np.std(sav_fpr,axis=0)
         std_tpr = np.std(sav_tpr,axis=0)
+        std_prec = np.std(sav_prec,axis=0)
+        std_recall = np.std(sav_recall,axis=0)
+        std_acc = np.std(sav_acc,axis=0)
+        #plotting
+        plt.subplot(1,2,1)
+        plt.plot(np.arange(-0.001,1,0.001), mean_prec * 100, label='Precision (%)')
+        plt.plot(np.arange(-0.001,1,0.001), mean_recall * 100, label='Recall (%)')
+        plt.plot(np.arange(-0.001,1,0.001), mean_acc * 100, label='Accuracy (%)')
+        plt.subplot(1,2,2)
+        plt.plot([0,1],[0,1],'k--',lw=2)
         plt.plot(mean_fpr, mean_tpr, colors[ik],lw = 3, alpha=0.8,label=r'%s, AUC=%.3f$\pm$%.3f'%(k,np.mean(sav_stats[k]['AUC']),np.std(sav_stats[k]['AUC'])) )
         fill_upper = np.minimum(mean_tpr + std_tpr, 1)
         fill_lower = np.minimum(mean_tpr - std_tpr, 1)
         plt.fill_between(mean_fpr,fill_upper, fill_lower, color=colors[ik], alpha=0.2)
-    plt.xlim([0,1])
-    plt.ylim([0,1])
+    plt.subplot(1,2,1)
+    plt.grid(True)
+    plt.xlim([-0.01,1.01])
+    plt.ylim([-0.01,1.01])
     ax1 = plt.gca()
-    ax1.tick_params(pad=-1)
+    ax1.tick_params(pad=-1,size=12)
+    plt.xlabel('Threshold',fontsize=14,labelpad=0)
+    plt.legend()
+    plt.subplot(1,2,2)
+    plt.grid(True)
+    plt.xlim([-0.01,1.01])
+    plt.ylim([-0.01,1.01])
+    ax1 = plt.gca()
+    ax1.tick_params(pad=-1,size=12)
     plt.xlabel('FPR',fontsize=14,labelpad=0)
     plt.ylabel('TPR',fontsize=14,labelpad=0)
     plt.legend()
     plt.savefig('./Stats/Stats_%s.png'%(run_num),dpi=150)
     plt.close()
 
-
+"""
