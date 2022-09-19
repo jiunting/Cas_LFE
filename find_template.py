@@ -21,6 +21,7 @@ import os
 
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
+search_days = 29 # number of days to be searched
 """
 Below define the data location and the channel (e.g. HH, BH, EH) for each station
 """
@@ -288,18 +289,25 @@ plt.fill_between(detc_time,detc_nums/max(np.abs(detc_nums)),0,color=[1,0.5,0.5])
 plt.fill_between(cat_time,cat_daynums/max(np.abs(cat_daynums)),0,color='k',alpha=0.8)
 plt.legend(['Model','Catalog'])
 plt.show()
-
+plt.close()
 
 # =====select detections that are not in the original catalog and see if that's real=====
 #cross-correlation "Coef" cunction for long v.s. short timeseries
 from obspy.signal.cross_correlation import correlate_template
 
-#manually select 20060301-20061101
+#manually select 20060301-20061101 as template
 filt_idx = np.where((sav_k>=UTCDateTime('20060301')) & (sav_k<=UTCDateTime('20061101')))[0]
 filt_sav_k = sav_k[filt_idx]
 
 all_sta = sav_T.keys()
+run_flag = False
 for T0 in filt_sav_k:
+    if T0==UTCDateTime("20060302T023945"):
+        run_flag = True
+    else:
+        run_flag = False
+    if not run_flag:
+        continue
     print('Template time series from:',T0,T0+template_length)
     # find available stations
     T0_str = T0.strftime('%Y-%m-%dT%H:%M:%S.%f')+'Z'
@@ -325,7 +333,7 @@ for T0 in filt_sav_k:
                             endtime=UTCDateTime(T0.strftime('%Y%m%d'))+86400-1/sampl)
             tempE = data_cut(E,Data2='',t1=T0,t2=T0+template_length)
             daily_files, days = daily_select(dataDir, net_sta, comp+"E",
-                          ranges=[T0.strftime('%Y%m%d'), (T0+(30*86400)).strftime('%Y%m%d')])
+                          ranges=[T0.strftime('%Y%m%d'), (T0+(search_days*86400)).strftime('%Y%m%d')])
             templates[net+'.'+sta] = {'template':tempE, 'daily_files':daily_files, 'days':days}
             # some test
             #CCF = correlate_template(E[0].data,tempE)
@@ -345,25 +353,49 @@ for T0 in filt_sav_k:
     common_days.sort()
     # search on those common days
     for i,i_common in enumerate(common_days):
-        print('  searching:',i_common)
+        if i>3:
+            continue
+        print('  -- searching daily:',i_common)
         #for this day, loop through each stations
         sum_CCF = 0
+        n_sta = 0
         for k in templates.keys():
             idx = np.where(templates[k]['days']==i_common)[0][0]
             E = data_process(templates[k]['daily_files'][idx],sampl=sampl,
                             starttime=UTCDateTime(i_common),
                             endtime=UTCDateTime(i_common)+86400-1/sampl)
+            if E is None:
+                continue
             CCF = correlate_template(E[0].data, templates[k]['template'])
+            if np.std(CCF)<1e-5:
+                continue #CCF too small, probably just zeros
             sum_CCF += CCF
+            n_sta += 1
+            E.clear()
         sum_CCF = sum_CCF/len(templates.keys())
         t = (np.arange(86400*sampl)/sampl)[:len(sum_CCF)]
         plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
         idx = np.where(sum_CCF>=0.5)[0]
         if len(idx)>0:
-            print(idx)
+            print('idx:',idx,'CC:',sum_CCF[idx],'t:',t[idx])
+            if i==0:
+                #skip detection for itself
+                d_idx = np.abs(idx-(T0-UTCDateTime(T0.year,T0.month,T0.day))*sampl)
+                rm_idx = np.where(d_idx<=10*sampl)[0]
+                idx = np.delete(idx,rm_idx)
             for ii in idx:
                 plt.plot(t[ii],sum_CCF[ii],'r.')
-    plt.savefig('CCF_%s.png'%(T0.isoformat()),dpi=300)
+        if i==0:
+            #plot itself
+            plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
+            print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
+    ax=plt.gca()
+    ax.tick_params(pad=1.5,length=0.5,size=2.5,labelsize=10)
+    plt.title('Template:%s (stack %d stations)'%(T0.isoformat(), n_sta))
+    plt.xlim([0,t.max()])
+    plt.ylim([-1,search_days+1])
+    plt.xlabel('Seconds',fontsize=14,labelpad=0)
+    plt.ylabel('Days since template',fontsize=14,labelpad=0)
+    plt.savefig('./template_match/CCF_%s.png'%(T0.isoformat()),dpi=300)
     plt.close()
-        
         
