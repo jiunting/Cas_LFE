@@ -41,7 +41,7 @@ CN_list = {'GOBB':'EH',
            'YOUB':'HH',
            }
 
-def data_process(filePath,sampl=sampl):
+def data_process(filePath,sampl=sampl,starttime=None,endtime=None):
     """
     load and process daily .mseed data
     other processing such as detrend, taper, filter are hard coded in the script, modify them accordingly
@@ -67,8 +67,12 @@ def data_process(filePath,sampl=sampl):
         return None #unable to read file either an empty or broken file
     if len(D)!=1:
         D.merge(method=1,interpolation_samples=-1,fill_value='interpolate')
-    t1 = D[0].stats.starttime
-    t2 = D[0].stats.endtime
+    if starttime is None:
+        t1 = D[0].stats.starttime
+        t2 = D[0].stats.endtime
+    else:
+        t1 = starttime
+        t2 = endtime
     D.detrend('linear')
     D.taper(0.02) #2% taper
     D.filter('highpass',freq=1.0)
@@ -103,8 +107,21 @@ def data_cut(Data1,Data2='',t1=UTCDateTime("20100101"),t2=UTCDateTime("20100102"
         DD.trim(starttime=t1-1, endtime=t2+1, nearest_sample=True, pad=True, fill_value=0)
         DD.interpolate(sampling_rate=sampl, starttime=t1,method='linear')
         DD.trim(starttime=t1, endtime=t2, nearest_sample=True, pad=True, fill_value=0)
-    #assert len(DD[0].data)==3001, "cut data not exactly 3001 points"
+    assert len(DD[0].data)==1501, "cut data not exactly 1501 points"
     return DD[0].data
+
+
+def daily_select(dataDir, net_sta, comp, ranges=None):
+    daily_files = glob.glob(dataDir+"/*."+net_sta+".*."+comp+".mseed") #all daily files
+    daily_files.sort()
+    daily_files = np.array(daily_files)
+    days = np.array([i.split('/')[-1].split('.')[0] for i in daily_files])
+    if ranges is not None:
+        idx = np.where((days>=ranges[0]) & (days<=ranges[1]))[0]
+        daily_files = daily_files[idx]
+        days = days[idx]
+    return daily_files, days
+    
 
 
 class XstationParams(TypedDict):
@@ -288,9 +305,9 @@ for T0 in filt_sav_k:
     T0_str = T0.strftime('%Y-%m-%dT%H:%M:%S.%f')+'Z'
     print(' - stations have detections:',all_T[T0_str]['sta'])
     templates = {}
-    for sta in all_T[T0_str]['sta']:
-        net = sta.split('.')[0]
-        sta = sta.split('.')[1]
+    for net_sta in all_T[T0_str]['sta']:
+        net = net_sta.split('.')[0]
+        sta = net_sta.split('.')[1]
         if net == 'PO':
             comp = 'HH'
             dataDir = dir1
@@ -303,13 +320,50 @@ for T0 in filt_sav_k:
         if (not os.path.exists(t1_fileE)) or (not os.path.exists(t2_fileE)):
             continue
         if t1_fileE==t2_fileE:
-            E = data_process(t1_fileE,sampl=sampl)
+            E = data_process(t1_fileE,sampl=sampl,
+                            starttime=UTCDateTime(T0.strftime('%Y%m%d')),
+                            endtime=UTCDateTime(T0.strftime('%Y%m%d'))+86400-1/sampl)
             tempE = data_cut(E,Data2='',t1=T0,t2=T0+template_length)
-            templates[net+'.'+sta] = tempE
+            daily_files, days = daily_select(dataDir, net_sta, comp+"E",
+                          ranges=[T0.strftime('%Y%m%d'), (T0+(30*86400)).strftime('%Y%m%d')])
+            templates[net+'.'+sta] = {'template':tempE, 'daily_files':daily_files, 'days':days}
             # some test
-            CCF = correlate_template(E[0].data,tempE)
-            assert UTCDateTime(T0.year,T0.month,T0.day)+np.argmax(CCF)/sampl==T0
+            #CCF = correlate_template(E[0].data,tempE)
+            #np.save('tmpCCF_%s.npy'%(sta),CCF)
+            #assert UTCDateTime(T0.year,T0.month,T0.day)+np.argmax(CCF)/sampl==T0
         else:
             continue # for now, just skip the data across days
-    #break
-            
+    #=====use the templates to search on continuous data=====
+    # find the intersection time of all stations
+    common_days = None
+    for k in templates.keys():
+        if common_days is None:
+            common_days = set(templates[k]['days'])
+        else:
+            common_days = common_days.intersection(templates[k]['days'])
+    common_days = list(common_days)
+    common_days.sort()
+    # search on those common days
+    for i,i_common in enumerate(common_days):
+        print('  searching:',i_common)
+        #for this day, loop through each stations
+        sum_CCF = 0
+        for k in templates.keys():
+            idx = np.where(templates[k]['days']==i_common)[0][0]
+            E = data_process(templates[k]['daily_files'][idx],sampl=sampl,
+                            starttime=UTCDateTime(i_common),
+                            endtime=UTCDateTime(i_common)+86400-1/sampl)
+            CCF = correlate_template(E[0].data, templates[k]['template'])
+            sum_CCF += CCF
+        sum_CCF = sum_CCF/len(templates.keys())
+        t = (np.arange(86400*sampl)/sampl)[:len(sum_CCF)]
+        plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
+        idx = np.where(sum_CCF>=0.5)[0]
+        if len(idx)>0:
+            print(idx)
+            for ii in idx:
+                plt.plot(t[ii],sum_CCF[ii],'r.')
+    plt.savefig('CCF_%s.png'%(T0.isoformat()),dpi=300)
+    plt.close()
+        
+        
