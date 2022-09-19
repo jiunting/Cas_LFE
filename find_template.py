@@ -270,9 +270,9 @@ detc_time, detc_nums = get_daily_nums(sav_k)
 
 # load original detection file (from template matching)
 # load family and arrival information
-EQinfo = np.load("./Data/sav_family_phases.npy",allow_pickle=True) #Note! detection file has a shift for each family
+EQinfo = np.load("./sav_family_phases.npy",allow_pickle=True) #Note! detection file has a shift for each family
 EQinfo = EQinfo.item()
-detcFile = "./Data/total_mag_detect_0000_cull_NEW.txt" #LFE event detection file
+detcFile = "./total_mag_detect_0000_cull_NEW.txt" #LFE event detection file
 sav_OT_template = []
 with open(detcFile,'r') as IN1:
     for line in IN1.readlines():
@@ -300,14 +300,16 @@ filt_idx = np.where((sav_k>=UTCDateTime('20060301')) & (sav_k<=UTCDateTime('2006
 filt_sav_k = sav_k[filt_idx]
 
 all_sta = sav_T.keys()
-run_flag = False
+#run_flag = False
 for T0 in filt_sav_k:
+    '''
     if T0==UTCDateTime("20060302T023945"):
         run_flag = True
     else:
         run_flag = False
     if not run_flag:
         continue
+    '''
     print('Template time series from:',T0,T0+template_length)
     # find available stations
     T0_str = T0.strftime('%Y-%m-%dT%H:%M:%S.%f')+'Z'
@@ -353,8 +355,8 @@ for T0 in filt_sav_k:
     common_days.sort()
     # search on those common days
     for i,i_common in enumerate(common_days):
-        if i>3:
-            continue
+        #if i>3:
+        #    continue #only run 3 days for quick testing
         print('  -- searching daily:',i_common)
         #for this day, loop through each stations
         sum_CCF = 0
