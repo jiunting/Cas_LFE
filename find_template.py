@@ -10,6 +10,8 @@ Created on Sun Sep 18 11:55:05 2022
 
 import numpy as np
 from scipy import signal
+import matplotlib
+matplotlib.use('pdf') #instead using interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 import obspy
@@ -124,7 +126,7 @@ def daily_select(dataDir, net_sta, comp, ranges=None):
     return daily_files, days
     
 
-
+'''
 class XstationParams(TypedDict):
     time_range: float # Other stations with arrival within this time range [seconds] will be considered
     n_stations: int   # Consider a template is valid if other (self not included) n stations also have the same arrival (defined by the above time range)
@@ -151,6 +153,7 @@ search_params: SearchParams = {
     'fout_dir':"./template_result",
 }
 #============================================
+'''
 
 def get_daily_nums(T):
     # get number of events each day
@@ -334,6 +337,7 @@ for T0 in filt_sav_k:
                             starttime=UTCDateTime(T0.strftime('%Y%m%d')),
                             endtime=UTCDateTime(T0.strftime('%Y%m%d'))+86400-1/sampl)
             tempE = data_cut(E,Data2='',t1=T0,t2=T0+template_length)
+            E.clear()
             daily_files, days = daily_select(dataDir, net_sta, comp+"E",
                           ranges=[T0.strftime('%Y%m%d'), (T0+(search_days*86400)).strftime('%Y%m%d')])
             templates[net+'.'+sta] = {'template':tempE, 'daily_files':daily_files, 'days':days}
@@ -374,6 +378,7 @@ for T0 in filt_sav_k:
             sum_CCF += CCF
             n_sta += 1
             E.clear()
+            del CCF
         sum_CCF = sum_CCF/len(templates.keys())
         t = (np.arange(86400*sampl)/sampl)[:len(sum_CCF)]
         plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
