@@ -13,6 +13,7 @@ from scipy import signal
 import matplotlib
 matplotlib.use('pdf') #instead using interactive backend
 import matplotlib.pyplot as plt
+import gc
 import pandas as pd
 import obspy
 from obspy import UTCDateTime
@@ -404,5 +405,7 @@ for T0 in filt_sav_k:
     plt.xlabel('Seconds',fontsize=14,labelpad=0)
     plt.ylabel('Days since template',fontsize=14,labelpad=0)
     plt.savefig('./template_match/CCF_%s.png'%(T0.isoformat()),dpi=300)
+    plt.clf()
     plt.close()
+    gc.collect()
         
