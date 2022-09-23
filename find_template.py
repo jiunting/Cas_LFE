@@ -25,6 +25,9 @@ import os
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
 search_days = 29 # number of days to be searched
+MAD_thresh = 8 # 8 times the median absolute deviation
+CC_range = 5 # group the CC if they are close. [Unit: second] so this value *sampl is the actual pts.
+
 """
 Below define the data location and the channel (e.g. HH, BH, EH) for each station
 """
@@ -44,6 +47,68 @@ CN_list = {'GOBB':'EH',
            'VGZ':'BH',
            'YOUB':'HH',
            }
+
+def cal_CCC(data1,data2):
+    #calculate max CC, and its lag idx
+    tmpccf=signal.correlate(data1,data2,'full')
+    auto1=signal.correlate(data1,data1,'full')
+    auto2=signal.correlate(data2,data2,'full')
+    tmpccf=tmpccf/np.sqrt(np.max(auto1)*np.max(auto2))
+    maxCCC=np.max(tmpccf)
+    lag=tmpccf.argmax()
+    return maxCCC,lag
+
+def find_group(idx, CC, t_wind=5, sampl=100):
+    '''
+    INPUTs
+    ======
+    idx: list or np.ndarray
+        Index to be grouped.
+    CC: list or np.ndarray
+        CC associated with idx.
+    t_wind: float
+        Window of the idx to be considered as a `group`. In [second].
+    sampl: int (float acceptable)
+        Sampling rate of the data
+    OUTPUTs
+    ======
+    new_idx: np.ndarray
+        New index after grouping.
+    new_CC: np.ndarray
+        New CC associated with grouping
+    '''
+    if len(idx)==0:
+        return idx,CC
+    prev_idx = idx[0]
+    max_CC = CC[0]
+    max_CC_idx = idx[0]
+    new_idx = []
+    new_CC = []
+    for i in range(1,len(idx)):
+        #print('now in:',i)
+        if idx[i]-prev_idx<(t_wind*sampl): # a group
+            #print('same group comparing with:',max_CC,CC[i])
+            if CC[i]>=max_CC:
+                max_CC = CC[i]
+                max_CC_idx = idx[i]
+        else: #start another group
+            #print('change group:',max_CC,CC[i])
+            # accept the prev_idx
+            new_idx.append(max_CC_idx)
+            new_CC.append(max_CC)
+            # reset max_CC, max_CC_idx
+            max_CC = CC[i]
+            max_CC_idx = idx[i]
+        prev_idx = idx[i]
+    
+    new_idx.append(max_CC_idx)
+    new_CC.append(max_CC)
+    #plt.plot(idx,CC,'r.-')
+    #plt.plot(new_idx,new_CC,'ko')
+    #plt.show()
+    return new_idx, new_CC
+
+
 
 def data_process(filePath,sampl=sampl,starttime=None,endtime=None):
     """
@@ -378,25 +443,48 @@ for T0 in filt_sav_k:
                 continue #CCF too small, probably just zeros
             sum_CCF += CCF
             n_sta += 1
+            templates[k]['tmp_data'] = E[0].data[:]
             E.clear()
             del CCF
         sum_CCF = sum_CCF/len(templates.keys())
+        thresh = MAD_thresh * np.median(np.abs(sum_CCF - np.median(sum_CCF))) + np.median(sum_CCF)
+        print('   ---   Threshold=%f'%(thresh))
         t = (np.arange(86400*sampl)/sampl)[:len(sum_CCF)]
-        plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
-        idx = np.where(sum_CCF>=0.5)[0]
+        #plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
+        # find detections
+        idx = np.where(sum_CCF>=thresh)[0]
         if len(idx)>0:
-            print('idx:',idx,'CC:',sum_CCF[idx],'t:',t[idx])
             if i==0:
                 #skip detection for itself
                 d_idx = np.abs(idx-(T0-UTCDateTime(T0.year,T0.month,T0.day))*sampl)
                 rm_idx = np.where(d_idx<=10*sampl)[0]
                 idx = np.delete(idx,rm_idx)
+            #e.g. idx: [4613840 4613841 4613842 4613843 4613844 4613845] CC: [ 0.21118094  0.21532219  0.21930467  0.21915041  0.21752349  0.21353063] decide what idx to use
+            print('idx:',idx,'CC:',sum_CCF[idx],'t:',t[idx])
+            idx, new_CC = find_group(idx, sum_CCF[idx], t_wind=CC_range, sampl=sampl)
+            print('after group>>',idx,new_CC,t[idx])
             for ii in idx:
-                plt.plot(t[ii],sum_CCF[ii],'r.')
+                #plt.plot(t[ii],sum_CCF[ii]+i,'r.')
+                #stack data for each stations
+                for k in templates.keys():
+                    if 'stack' in templates[k]:
+                        templates[k]['stack'] += templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]
+                        templates[k]['Nstack'] += 1
+                        templates[k]['time'].append(UTCDateTime(i_common)+ii/sampl)
+                    else:
+                        # initial a couple of new keys if there's any stacking
+                        templates[k]['stack'] = templates[k]['template'] + templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]
+                        templates[k]['Nstack'] = 2
+                        templates[k]['time'] = [UTCDateTime(i_common)+ii/sampl]
         if i==0:
             #plot itself
-            plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
+            #plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
             print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
+    for k in templates.keys():
+        del templates[k]['tmp_data'] #remove daily data
+    if 'stack' in templates[k]: #only save those have matching
+        np.save('./template_match/Temp_%s.npy'%(T0.isoformat().replace(':','')),templates)
+    '''
     ax=plt.gca()
     ax.tick_params(pad=1.5,length=0.5,size=2.5,labelsize=10)
     plt.title('Template:%s (stack %d stations)'%(T0.isoformat(), n_sta))
@@ -404,8 +492,8 @@ for T0 in filt_sav_k:
     plt.ylim([-1,search_days+1])
     plt.xlabel('Seconds',fontsize=14,labelpad=0)
     plt.ylabel('Days since template',fontsize=14,labelpad=0)
-    plt.savefig('./template_match/CCF_%s.png'%(T0.isoformat()),dpi=300)
+    plt.savefig('./template_match/CCF_%s.png'%(T0.isoformat().replace(':','')),dpi=300)
     plt.clf()
     plt.close()
     gc.collect()
-        
+    ''' 
