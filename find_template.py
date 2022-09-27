@@ -450,7 +450,7 @@ for T0 in filt_sav_k:
         thresh = MAD_thresh * np.median(np.abs(sum_CCF - np.median(sum_CCF))) + np.median(sum_CCF)
         print('   ---   Threshold=%f'%(thresh))
         t = (np.arange(86400*sampl)/sampl)[:len(sum_CCF)]
-        #plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
+        plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
         # find detections
         idx = np.where(sum_CCF>=thresh)[0]
         if len(idx)>0:
@@ -464,27 +464,31 @@ for T0 in filt_sav_k:
             idx, new_CC = find_group(idx, sum_CCF[idx], t_wind=CC_range, sampl=sampl)
             print('after group>>',idx,new_CC,t[idx])
             for ii in idx:
-                #plt.plot(t[ii],sum_CCF[ii]+i,'r.')
+                plt.plot(t[ii],sum_CCF[ii]+i,'r.')
                 #stack data for each stations
                 for k in templates.keys():
                     if 'stack' in templates[k]:
-                        templates[k]['stack'] += templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]
+                        templates[k]['stack'] += templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]))
                         templates[k]['Nstack'] += 1
                         templates[k]['time'].append(UTCDateTime(i_common)+ii/sampl)
                     else:
                         # initial a couple of new keys if there's any stacking
-                        templates[k]['stack'] = templates[k]['template'] + templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]
+                        templates[k]['stack'] = templates[k]['template']/np.max(np.abs(templates[k]['template'])) + templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]))
                         templates[k]['Nstack'] = 2
                         templates[k]['time'] = [UTCDateTime(i_common)+ii/sampl]
         if i==0:
             #plot itself
-            #plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
+            plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
             print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
     for k in templates.keys():
         del templates[k]['tmp_data'] #remove daily data
     if 'stack' in templates[k]: #only save those have matching
         np.save('./template_match/Temp_%s.npy'%(T0.isoformat().replace(':','')),templates)
-    '''
+    else:
+        plt.clf()
+        plt.close()
+        gc.collect()
+        continue
     ax=plt.gca()
     ax.tick_params(pad=1.5,length=0.5,size=2.5,labelsize=10)
     plt.title('Template:%s (stack %d stations)'%(T0.isoformat(), n_sta))
@@ -496,4 +500,3 @@ for T0 in filt_sav_k:
     plt.clf()
     plt.close()
     gc.collect()
-    ''' 
