@@ -453,6 +453,7 @@ for T0 in filt_sav_k:
     common_days = list(common_days)
     common_days.sort()
     # =====search on those common days=====
+    sav_flag = False
     for i,i_common in enumerate(common_days):
         #if i>3:
         #    continue #only run 3 days for quick testing
@@ -525,6 +526,7 @@ for T0 in filt_sav_k:
             idx, new_CC = find_group(idx, sum_CCF[idx], t_wind=CC_range, sampl=sampl)
             print('after group>>',idx,new_CC,t[idx])
             for ii in idx:
+                sav_flag = True
                 #plt.plot(t[ii],sum_CCF[ii]+i,'r.')
                 plt.plot(t[ii],sum_CCF[ii]+_days,'r.')
                 #=====stack data based on the detected time (i.e. idx) for each stations=====
@@ -546,8 +548,10 @@ for T0 in filt_sav_k:
             plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
             print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
     for k in templates.keys():
-        del templates[k]['tmp_data'] #remove daily data
-    if 'stack' in templates[k]: #only save those have matching
+        if 'tmp_data' in templates[k]:
+            print('delete tmp_data for',k)
+            del templates[k]['tmp_data'] #remove daily data
+    if sav_flag: #only save those have matching
         np.save('./template_match/Temp_%s.npy'%(T0.isoformat().replace(':','')),templates)
     else:
         plt.clf()

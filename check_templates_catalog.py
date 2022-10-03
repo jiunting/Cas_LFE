@@ -237,7 +237,7 @@ for sta in stas:
                         endtime=UTCDateTime(T0.strftime('%Y%m%d'))+86400-1/sampl)
             tempD = data_cut(D,Data2='',t1=T0,t2=T0+template_length)
             D.clear()
-            if sum(np.isnan(tempD)):
+            if np.sum(np.isnan(tempD)):
                 comp_complete_flag = False
                 break # template has issue
             daily_files, days = daily_select(dataDir, '.'.join([net,sta]), comp+i_comp,
@@ -274,6 +274,7 @@ common_days = list(common_days)
 common_days.sort()
 
 # =====search on those common days=====
+sav_flag = False
 for i,i_common in enumerate(common_days):
     #if i>3:
     #    continue #only run 3 days for quick testing
@@ -334,7 +335,6 @@ for i,i_common in enumerate(common_days):
     plt.plot(t,sum_CCF+_days,color=[0.2,0.2,0.2],lw=0.5)
     plt.text(t[-1],_days,'%d'%(n_sta))
     # find detections
-    print('- find detections')
     idx = np.where(sum_CCF>=thresh)[0]
     if len(idx)>0:
         if i==0:
@@ -346,6 +346,7 @@ for i,i_common in enumerate(common_days):
         idx, new_CC = find_group(idx, sum_CCF[idx], t_wind=CC_range, sampl=sampl)
         print('after group>>',idx,new_CC,t[idx])
         for ii in idx:
+            sav_flag = True
             #plt.plot(t[ii],sum_CCF[ii]+i,'r.')
             plt.plot(t[ii],sum_CCF[ii]+_days,'r.')
             #stack data for each stations
@@ -362,17 +363,18 @@ for i,i_common in enumerate(common_days):
                         templates[k]['stack'][i_comp] = templates[k]['template'][i_comp]/np.max(np.abs(templates[k]['template'][i_comp])) + templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
                     templates[k]['Nstack'] = 2
                     templates[k]['time'] = [UTCDateTime(i_common)+ii/sampl]
-    print('- find detections done!')
     if i==0:
         #plot itself
         plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
         print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
-    break #only test one day
+    #break #only test one day
     
 for k in templates.keys():
-    del templates[k]['tmp_data'] #remove daily data
+    if 'tmp_data' in templates[k]:
+        print('delete tmp_data for',k)
+        del templates[k]['tmp_data'] #remove daily data (all components)
     
-if 'stack' in templates[k]: #only save those have matching
+if sav_flag: #only save those have matching
     np.save('./template_match/Temp_%s.npy'%(T0.isoformat().replace(':','')),templates)
 else:
     plt.clf()
