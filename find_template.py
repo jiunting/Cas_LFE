@@ -440,6 +440,7 @@ for T0 in filt_sav_k:
         #for this day, loop through each stations
         sum_CCF = 0
         n_sta = 0
+        avail_k = []
         for k in templates.keys():
             idx = np.where(templates[k]['days']==i_common)[0][0]
             E = data_process(templates[k]['daily_files'][idx],sampl=sampl,
@@ -448,8 +449,11 @@ for T0 in filt_sav_k:
             if E is None:
                 continue #skip this station
             CCF = correlate_template(E[0].data, templates[k]['template'])
+            if sum(np.isnan(CCF)):
+                continue #RuntimeWarning (devided by 0).
             if np.std(CCF)<1e-5:
                 continue #CCF too small, probably just zeros, skip this station
+            avail_k.append(k)
             sum_CCF += CCF
             n_sta += 1
             templates[k]['tmp_data'] = E[0].data[:]
@@ -462,7 +466,7 @@ for T0 in filt_sav_k:
         _days = int((UTCDateTime(i_common)-UTCDateTime(T0.strftime('%Y%m%d')))/86400) #actual day after the template date
         #plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
         plt.plot(t,sum_CCF+_days,color=[0.2,0.2,0.2],lw=0.5)
-        # find detections
+        #=====find detections=====
         idx = np.where(sum_CCF>=thresh)[0]
         if len(idx)>0:
             if i==0:
@@ -477,8 +481,9 @@ for T0 in filt_sav_k:
             for ii in idx:
                 #plt.plot(t[ii],sum_CCF[ii]+i,'r.')
                 plt.plot(t[ii],sum_CCF[ii]+_days,'r.')
-                #stack data for each stations
-                for k in templates.keys():
+                #=====stack data based on the detected time (i.e. idx) for each stations=====
+                #for k in templates.keys(): not all the k have data
+                for k in avail_k:
                     if 'stack' in templates[k]:
                         templates[k]['stack'] += templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]))
                         templates[k]['Nstack'] += 1

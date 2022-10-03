@@ -21,11 +21,14 @@ min_Nstack = 10
 templates_files = glob.glob(templates_path+"/Temp_*.npy")
 templates_files.sort()
 
-templates_files = ["./template_match/Temp_2006-03-03T120130.npy"]
+#templates_files = ["./template_match/Temp_2006-03-01T225500.npy"]
+#templates_files = ["./template_match/Temp_2006-03-03T120130.npy"]
+templates_files = ["./template_match/Temp_2005-09-03T071338.425000.npy"]
 
 t = np.arange(int(sampl*template_length+1))/sampl
 props = dict(boxstyle='round', facecolor='white', alpha=0.7)
 for templates in templates_files:
+    print('Now dealing with:',templates,templates.replace('Temp','CCF').replace('.npy','.png'))
     template_time = templates.split('/')[-1].split('_')[1].replace('.npy','')
     templates = np.load(templates, allow_pickle=True)
     templates = templates.item()
@@ -52,4 +55,4 @@ for templates in templates_files:
     #plt.suptitle(template_time)
     plt.subplots_adjust(left=0.08,top=0.88,right=0.97,bottom=0.1,wspace=0.07)
     plt.show()
-    break
+    #break
