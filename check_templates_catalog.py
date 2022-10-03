@@ -24,6 +24,8 @@ import glob
 from typing import TypedDict, Dict
 import os
 from obspy.signal.cross_correlation import correlate_template
+import warnings
+warnings.simplefilter('error')
 
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
@@ -31,7 +33,7 @@ N_min = 3 # minimum number of stations have detection in the same time (same sta
 search_days = 29 # number of days to be searched
 MAD_thresh = 8 # 8 times the median absolute deviation
 CC_range = 5 # group the CC if they are close in time. [Unit: second] so this value *sampl is the actual pts.
-
+use_comp = ['E','N','Z'] #cross-correlate on what component
 
 def data_process(filePath,sampl=sampl,starttime=None,endtime=None):
     """
@@ -168,9 +170,9 @@ def find_group(idx, CC, t_wind=5, sampl=100):
 
 # load original detection file (from template matching)
 # load family and arrival information
-EQinfo = np.load("./data/sav_family_phases.npy",allow_pickle=True) #Note! detection file has a shift for each family
+EQinfo = np.load("./sav_family_phases.npy",allow_pickle=True) #Note! detection file has a shift for each family
 EQinfo = EQinfo.item()
-detcFile = "./data/total_mag_detect_0000_cull_NEW.txt" #LFE event detection file
+detcFile = "./total_mag_detect_0000_cull_NEW.txt" #LFE event detection file
 sav_OT_template = []
 family = []
 with open(detcFile,'r') as IN1:
@@ -221,26 +223,44 @@ for sta in stas:
         net = 'PO'
         comp = 'HH'
         dataDir = dir1
-    # find the file name
-    t1_fileE = dataDir+'/'+T0.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
-    t2_fileE = dataDir+'/'+(T0+template_length).strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+'E.mseed'
-    if (not os.path.exists(t1_fileE)) or (not os.path.exists(t2_fileE)):
-        continue
-    if t1_fileE==t2_fileE:
-        E = data_process(t1_fileE,sampl=sampl,
+    # =====find the file name=====
+    comp_complete_flag = True #all the components are completed (no missing component). True to continue process, otherwise, stop this station
+    for i_comp in use_comp: #use_comp = ['E','N','Z'] if all components are used.
+        t1_file = dataDir+'/'+T0.strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+i_comp+'.mseed'
+        t2_file = dataDir+'/'+(T0+template_length).strftime('%Y%m%d')+'.'+net+'.'+sta+'..'+comp+i_comp+'.mseed'
+        if (not os.path.exists(t1_file)) or (not os.path.exists(t2_file)):
+            comp_complete_flag = False
+            break
+        if t1_file==t2_file:
+            D = data_process(t1_file,sampl=sampl,
                         starttime=UTCDateTime(T0.strftime('%Y%m%d')),
                         endtime=UTCDateTime(T0.strftime('%Y%m%d'))+86400-1/sampl)
-        tempE = data_cut(E,Data2='',t1=T0,t2=T0+template_length)
-        E.clear()
-        daily_files, days = daily_select(dataDir, '.'.join([net,sta]), comp+"E",
+            tempD = data_cut(D,Data2='',t1=T0,t2=T0+template_length)
+            D.clear()
+            if sum(np.isnan(tempD)):
+                comp_complete_flag = False
+                break # template has issue
+            daily_files, days = daily_select(dataDir, '.'.join([net,sta]), comp+i_comp,
                         ranges=[T0.strftime('%Y%m%d'), (T0+(search_days*86400)).strftime('%Y%m%d')])
-        templates[net+'.'+sta] = {'template':tempE, 'daily_files':daily_files, 'days':days}
-        # some test
-        #CCF = correlate_template(E[0].data,tempE)
-        #np.save('tmpCCF_%s.npy'%(sta),CCF)
-        #assert UTCDateTime(T0.year,T0.month,T0.day)+np.argmax(CCF)/sampl==T0
-    else:
-        continue # for now, just skip the data across days
+            if net+'.'+sta in templates:
+                #check days are consistent with the previous comonent
+                if len(set(templates[net+'.'+sta]['days']).symmetric_difference(set(days)))!=0:
+                    comp_complete_flag = False
+                    break
+            if net+'.'+sta in templates:
+                templates[net+'.'+sta]['template'].update({i_comp:tempD})
+            else:
+                templates[net+'.'+sta] = {'template':{i_comp:tempD}, 'daily_files':daily_files, 'days':days, 'comp':comp}
+            # some test
+            #CCF = correlate_template(E[0].data,tempE)
+            #np.save('tmpCCF_%s.npy'%(sta),CCF)
+            #assert UTCDateTime(T0.year,T0.month,T0.day)+np.argmax(CCF)/sampl==T0
+        else:
+            comp_complete_flag = False
+            break # for now, just skip the data across days
+    if (not comp_complete_flag) and (net+'.'+sta in templates):
+        del templates[net+'.'+sta]
+        
 #=====use the templates to search on continuous data=====
 # find the intersection time of all stations
 common_days = None
@@ -252,7 +272,8 @@ for k in templates.keys():
 
 common_days = list(common_days)
 common_days.sort()
-# search on those common days
+
+# =====search on those common days=====
 for i,i_common in enumerate(common_days):
     #if i>3:
     #    continue #only run 3 days for quick testing
@@ -263,22 +284,47 @@ for i,i_common in enumerate(common_days):
     avail_k = []
     for k in templates.keys():
         idx = np.where(templates[k]['days']==i_common)[0][0]
-        E = data_process(templates[k]['daily_files'][idx],sampl=sampl,
+        curr_comp = templates[k]['daily_files'][idx].split('.')[-2]
+        sub_sum_CCF = 0
+        sub_n_sta = 0 #number of components sum in this station
+        comp_complete_flag = True
+        for i_comp in use_comp:
+            D = data_process(templates[k]['daily_files'][idx].replace(curr_comp, templates[k]['comp']+i_comp),sampl=sampl,
                         starttime=UTCDateTime(i_common),
                         endtime=UTCDateTime(i_common)+86400-1/sampl)
-        if E is None:
-            continue #skip this station
-        CCF = correlate_template(E[0].data, templates[k]['template'])
-        if sum(np.isnan(CCF)):
-            continue #RuntimeWarning
-        if np.std(CCF)<1e-5:
-            continue #CCF too small, probably just zeros, skip this station
-        avail_k.append(k)
-        sum_CCF += CCF
-        n_sta += 1
-        templates[k]['tmp_data'] = E[0].data[:]
-        E.clear()
-        del CCF
+            if D is None:
+                comp_complete_flag = False
+                break #skip this station/component
+            try:
+                CCF = correlate_template(D[0].data, templates[k]['template'][i_comp])
+            except:
+                CCF = np.nan
+                print('RuntimeWarning capture!')
+                comp_complete_flag = False
+                break
+            if np.std(CCF)<1e-5:
+                comp_complete_flag = False
+                break #CCF too small, probably just zeros, skip this station
+            # save daily data for later
+            if 'tmp_data' in templates[k]:
+                templates[k]['tmp_data'].update({i_comp: D[0].data[:]})
+            else:
+                templates[k]['tmp_data'] = {i_comp: D[0].data[:]}
+            # stack CCF at the same station, sub_sum_CCF will be added into final CCF if all the components are good.
+            sub_sum_CCF += CCF #sum CCF for the same station (multiple components)
+            sub_n_sta += 1
+            D.clear()
+            del CCF
+        if comp_complete_flag: #all components are good.
+            avail_k.append(k)
+            sum_CCF += sub_sum_CCF
+            n_sta += sub_n_sta
+        else:
+            # at least one component has issue
+            if 'tmp_data' in templates[k]:
+                del templates[k]['tmp_data']
+            D.clear()
+            del CCF
     sum_CCF = sum_CCF/n_sta
     thresh = MAD_thresh * np.median(np.abs(sum_CCF - np.median(sum_CCF))) + np.median(sum_CCF)
     print('   ---   Threshold=%f'%(thresh))
@@ -288,6 +334,7 @@ for i,i_common in enumerate(common_days):
     plt.plot(t,sum_CCF+_days,color=[0.2,0.2,0.2],lw=0.5)
     plt.text(t[-1],_days,'%d'%(n_sta))
     # find detections
+    print('- find detections')
     idx = np.where(sum_CCF>=thresh)[0]
     if len(idx)>0:
         if i==0:
@@ -305,14 +352,17 @@ for i,i_common in enumerate(common_days):
             #for k in templates.keys():
             for k in avail_k:
                 if 'stack' in templates[k]:
-                    templates[k]['stack'] += templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]))
+                    templates[k]['stack'][i_comp] += templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
                     templates[k]['Nstack'] += 1
                     templates[k]['time'].append(UTCDateTime(i_common)+ii/sampl)
                 else:
                     # initial a couple of new keys if there's any stacking
-                    templates[k]['stack'] = templates[k]['template']/np.max(np.abs(templates[k]['template'])) + templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][ii:ii+int(template_length*sampl+1)]))
+                    templates[k]['stack'] = {}
+                    for i_comp in use_comp:
+                        templates[k]['stack'][i_comp] = templates[k]['template'][i_comp]/np.max(np.abs(templates[k]['template'][i_comp])) + templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
                     templates[k]['Nstack'] = 2
                     templates[k]['time'] = [UTCDateTime(i_common)+ii/sampl]
+    print('- find detections done!')
     if i==0:
         #plot itself
         plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
