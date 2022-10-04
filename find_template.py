@@ -533,7 +533,8 @@ for T0 in filt_sav_k:
                 #for k in templates.keys(): not all the k have data
                 for k in avail_k:
                     if 'stack' in templates[k]:
-                        templates[k]['stack'] += templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
+                        for i_comp in use_comp:
+                            templates[k]['stack'][i_comp] += templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
                         templates[k]['Nstack'] += 1
                         templates[k]['time'].append(UTCDateTime(i_common)+ii/sampl)
                     else:

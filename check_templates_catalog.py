@@ -353,7 +353,8 @@ for i,i_common in enumerate(common_days):
             #for k in templates.keys():
             for k in avail_k:
                 if 'stack' in templates[k]:
-                    templates[k]['stack'][i_comp] += templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
+                    for i_comp in use_comp:
+                        templates[k]['stack'][i_comp] += templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
                     templates[k]['Nstack'] += 1
                     templates[k]['time'].append(UTCDateTime(i_common)+ii/sampl)
                 else:
