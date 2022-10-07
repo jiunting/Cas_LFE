@@ -141,6 +141,7 @@ cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
 #csvs = glob.glob('./Detections_S_new/*.csv')
 #csvs = glob.glob('./Detections_P/*.csv')
 csvs = glob.glob('./Detections_S_new/*.csv')
+#csvs = glob.glob('./Detections_S_C8_new/*.csv')
 #csvs = glob.glob('./Detections_P_new/*.csv')
 
 thres = 0.1 #plot everything >= thres
@@ -173,7 +174,9 @@ for n,k in enumerate(sav_detcTime.keys()):
     plt.text(max(sav_detcTime[k]),n+1,k,fontsize=10)
     
 plt.yticks([],[])
-
+plt.xlabel('Time (year)',fontsize=14,labelpad=0)
+ax1=plt.gca()
+ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12) 
 #plt.xlim([datetime.datetime(2005,1,1), datetime.datetime(2005,1,30)])
 
 #plt.savefig('detection_tcs_all_y%.1f.png'%(thres))
@@ -183,7 +186,8 @@ plt.yticks([],[])
 
 #plt.savefig('detection_tcs_all_P_y0.1.png')
 #plt.savefig('detection_tcs_all_P_y0.1.pdf')
-plt.savefig('detection_tcs_all_S_new_y0.1_0921.png',dpi=300)
+plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=300)
+#plt.savefig('detection_tcs_all_S_C8_new_y0.1_1005.png',dpi=300)
 #plt.savefig('detection_tcs_all_P_new_y0.1_0906.png',dpi=300)
 plt.close()
 
@@ -228,7 +232,11 @@ detc_time, detc_nums = get_daily_nums(sav_k) # daily detections from all the sta
 plt.fill_between(detc_time,detc_nums/max(np.abs(detc_nums)),0,color=[1,0.5,0.5])
 plt.fill_between(cat_time,cat_daynums/max(np.abs(cat_daynums)),0,color='k',alpha=0.8)
 plt.legend(['Model','Catalog'])
-plt.savefig('detection_tcs_merged_S_new_y0.1_0921.png',dpi=300)
+plt.xlabel('Time (year)',fontsize=14,labelpad=0)
+ax1=plt.gca()
+ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
+plt.savefig('detection_tcs_merged_S_new_y0.1_1005.png',dpi=300)
+#plt.savefig('detection_tcs_merged_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 
 
@@ -244,10 +252,13 @@ idx_detc_end = np.where(detc_time==Tend)[0][0]
 plt.plot(detc_time[idx_detc_st:idx_detc_end+1], np.cumsum(detc_nums[idx_detc_st:idx_detc_end+1]), 'r', lw=3, label='Model')
 plt.plot(cat_time[idx_cat_st:idx_cat_end+1], np.cumsum(cat_daynums[idx_cat_st:idx_cat_end+1]), 'k', lw=3, label='Catalog')
 plt.legend()
-plt.ylabel('Cumulative number', fontsize=14)
-plt.xlabel('Time (year)', fontsize=14)
+plt.ylabel('Cumulative number', fontsize=14,labelpad=0)
+plt.xlabel('Time (year)', fontsize=14,labelpad=0)
+ax1=plt.gca()
+ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 plt.grid('True')
-plt.savefig('detection_tcs_merged_cum_S_new_y0.1_0921.png',dpi=300)
+plt.savefig('detection_tcs_merged_cum_S_new_y0.1_1005.png',dpi=300)
+#plt.savefig('detection_tcs_merged_cum_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 
 

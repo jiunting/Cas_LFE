@@ -421,9 +421,11 @@ drop = 0
 sr = 100
 wd = 30 # 30sec of data. No longer needed
 epsilon=1e-6
-large = 0.5
+#large = 0.5
+large = 2
 std = 0.4
-run_num = 'S001'
+#run_num = 'S001'
+run_num = 'S003'
 x_data_file = "Data_QC_rmean_norm/merged20220602_S.h5"
 csv_file = "Data_QC_rmean_norm/merged20220602_S.csv"
 n_data_file = "Cascadia_noise_QC_rmean_norm.h5"
@@ -438,7 +440,8 @@ EQinfo = EQinfo.item()
 
 # test parameters
 min_stations = 5 # at least 5 station record available to be tested
-min_mag = 2.0 # only test with large magnitude
+#min_mag = 2.0 # only test with large magnitude
+min_mag = 1.5 # only test with large magnitude
 timeL = 0
 timeR = 15 # window length needs to match the model input
 #time_skip = 30 # skip the first 30 s
@@ -561,28 +564,32 @@ for idx in sig_test_inds:
         X = ZEN2inp(Z,E,N,epsilon)
         y_pred = model.predict(X.reshape(1,X.shape[0],X.shape[1]))
         #print('    travelT=',travel,S[0].time,t[y_pred[0].argmax()],max(y_pred[0]))
-        '''
-        plt.plot(t,10*E+st_dist*111,color=[0.8,0.8,0.8],linewidth=0.8)
+        plt.plot([0,15],[st_dist*111,st_dist*111],'--',color=[0.8,0.8,0.8],linewidth=0.3)
+        plt.plot(t,5*E+st_dist*111,linewidth=0.6)
         plt.plot(travel,st_dist*111,'r*',markersize=12)
+        plt.text(15,st_dist*111,'%s'%(sta))
         if max(y_pred[0])>0.1:
             plt.plot(t[y_pred[0].argmax()],st_dist*111,'bo',markersize=8)
-        plt.plot(t,10*y_pred[0]+st_dist*111,'b',linewidth=0.8)
-        plt.plot([0,15],[st_dist*111,st_dist*111],'k--',linewidth=0.3)
+        plt.plot(t,5*y_pred[0]+st_dist*111,'b',linewidth=2.0)
         '''
         plt.plot(t,E+n,color=[0.8,0.8,0.8],linewidth=0.8)
         plt.plot(t,y_pred[0]+n)
+        '''
     plt.title('OT:%s M=%.1f'%(real_OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2],catalog.iloc[idx].mag),fontsize=14)
     plt.xlim([0,15])
     plt.xlabel('Origin Time (s)',fontsize=14)
     #plt.xlabel('Origin:%s'%(org_real_OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-2]),fontsize=14)
-    plt.ylabel('Hypo Dist (km)',fontsize=14)
-    plt.savefig('testplot_%03d.png'%(n_test))
+    plt.ylabel('Distance (km)',fontsize=14)
+    plt.savefig('./detection_example/testplot_%03d.png'%(n_test),dpi=300)
     plt.close()
+    print(n_test)
     n_test += 1
-    if n_test==10:
+    if n_test==50:
         break
 
 
+import sys
+sys.exit()
 
 
 # Part 2. Test the model with noise data
