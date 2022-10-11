@@ -25,6 +25,8 @@ import gc
 import pandas as pd
 import obspy
 from obspy import UTCDateTime
+#cross-correlation "Coef" cunction for long v.s. short timeseries
+from obspy.signal.cross_correlation import correlate_template
 import datetime
 import glob
 from typing import TypedDict, Dict
@@ -35,6 +37,7 @@ warnings.simplefilter('error')
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
 N_min = 3 # minimum number of stations have detection in the same time (same starttime window)
+Cent_dist = 30 #[float or False] select stations within x-km from the centroid distance, after this filter check back if the remaining sta meet the N_min.
 search_days = 29 # number of days to be searched
 MAD_thresh = 8 # 8 times the median absolute deviation
 CC_range = 5 # group the CC if they are close in time. [Unit: second] so this value *sampl is the actual pts.
@@ -59,6 +62,12 @@ CN_list = {'GOBB':'EH',
            'VGZ':'BH',
            'YOUB':'HH',
            }
+
+if Cent_dist:
+    # load station info
+    stainfo=np.load('stainfo.npy',allow_pickle=True)
+    stainfo = stainfo.item()
+
 
 def cal_CCC(data1,data2):
     #calculate max CC, and its lag idx
@@ -312,13 +321,61 @@ def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=No
         #T.reset_index(drop=True, inplace=True) #reset the keys e.g. [1,5,6,10...] to [0,1,2,3,...]
         return T
 
+
+def filt_cent(stations, stainfo, Cent_dist=30, N_min=3):
+    """
+    Filter station by centroid and distance. Dont want stations that are too far away to be a template.
+    After filter, check if the remaining stations pass the N_min criteria.
+    
+    INPUTs
+    ======
+    stations: List or np.ndarray
+        A list of stations to be applied.
+    stainfo: Dict
+        A dictionary of station coordinate e.g. stainfo['PGC'] = [-123.4521, 48.649799999999999, 12.0]
+    Cent_dist: float or False
+        Filter stations with the centroid distance by initial stations
+    N_min: int
+        After filtering, check if the stations pass the criteria.
+    
+    OUTPUTs
+    =======
+    stations: List
+        A list of stations after filtering
+    """
+    if Cent_dist==False:
+        return stations # no filter, just return everything
+    sav_stlo = []
+    sav_stla = []
+    for net_sta in stations:
+        net = net_sta.split('.')[0]
+        sta = net_sta.split('.')[1]
+        stlo,stla,_ = stainfo[sta]
+        sav_stlo.append(stlo)
+        sav_stla.append(stla)
+    cent_lon = np.mean(sav_stlo)
+    cent_lat = np.mean(sav_stla)
+    res = []
+    for net_sta in stations:
+        net = net_sta.split('.')[0]
+        sta = net_sta.split('.')[1]
+        stlo,stla,_ = stainfo[sta]
+        dist, _, _ = obspy.geodetics.base.gps2dist_azimuth(lat1=cent_lat, lon1=cent_lon, lat2=stla, lon2=stlo) #dist in m
+        if dist*1e-3<=Cent_dist:
+            res.append(net_sta)
+    if len(res)>=N_min:
+        return res
+    else:
+        return []
+
+
 #=====get all the detection starttime=====
 csvs = glob.glob("./Detections_S_new/*.csv")
 csvs.sort()
 
 sav_T = {}
 for csv in csvs:
-    print('Now in :',csv)
+    print('Now loading :',csv)
     net_sta = csv.split('/')[-1].split('_')[-1].replace('.csv','')
     T = dect_time(csv, thresh=0.1)
     if T is None:
@@ -327,8 +384,8 @@ for csv in csvs:
 
 #=====get the number of detections in the same starttime window=====
 #=====future improvement: consider nearby windows i.e. +-15 s
-print('-----Initialize all_T. Min=1, Max=%d'%(len(sav_T)))
-all_T = {}
+print('-----Initialize all_T, number of detections in each time window, (Min=1, Max=%d)'%(len(sav_T)))
+all_T = {} # e.g. all_T['2006-03-01T22:53:00.000000Z'] = {'num':3, 'sta':['CN.LZB', 'CN.PGC', 'PO.SSIB']}
 for k in sav_T.keys():
     print('dealing with:',k)
     for t in sav_T[k]:
@@ -347,6 +404,10 @@ for k in all_T.keys():
 
 sav_k.sort()
 sav_k = np.array([UTCDateTime(i) for i in sav_k])
+print('Total of candidate templates=%d after N_min=%d filter'%(len(sav_k), N_min))
+print('  (For example:sav_k[0]=%s, startimg from this time T0 to T0+%f s) '%(sav_k[0].isoformat().replace(':',''),template_length))
+
+#
 detc_time, detc_nums = get_daily_nums(sav_k)
 
 # load original detection file (from template matching)
@@ -365,18 +426,20 @@ with open(detcFile,'r') as IN1:
         OT = OT + HH + SS + EQinfo[ID]['catShift'] #detected origin time
         sav_OT_template.append(OT.datetime)
 
-cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
+cat_time, cat_daynums = get_daily_nums(sorted(sav_OT_template))
+
+"""
+#plotting ML detected v.s. catalog
 plt.fill_between(detc_time,detc_nums/max(np.abs(detc_nums)),0,color=[1,0.5,0.5])
 plt.fill_between(cat_time,cat_daynums/max(np.abs(cat_daynums)),0,color='k',alpha=0.8)
 plt.legend(['Model','Catalog'])
 plt.show()
 plt.close()
+"""
 
 # =====select detections that are not in the original catalog and see if that's real=====
-#cross-correlation "Coef" cunction for long v.s. short timeseries
-from obspy.signal.cross_correlation import correlate_template
 
-#manually select 20060301-20061101 as template
+# Cant do full scale search.... manually select candidate template between 20060301-20061101, which is the gap in catalog
 filt_idx = np.where((sav_k>=UTCDateTime('20060301')) & (sav_k<=UTCDateTime('20061101')))[0]
 filt_sav_k = sav_k[filt_idx]
 
@@ -395,8 +458,12 @@ for T0 in filt_sav_k:
     # find available stations
     T0_str = T0.strftime('%Y-%m-%dT%H:%M:%S.%f')+'Z'
     print(' - stations have detections:',all_T[T0_str]['sta'])
+    stations = filt_cent(all_T[T0_str]['sta'], stainfo, Cent_dist, N_min) #adding a centroid distance filter 10/11
+    if len(stations)==0:
+        continue
     templates = {}
-    for net_sta in all_T[T0_str]['sta']:
+    #for net_sta in all_T[T0_str]['sta']:
+    for net_sta in stations:
         net = net_sta.split('.')[0]
         sta = net_sta.split('.')[1]
         if net == 'PO':
@@ -419,7 +486,7 @@ for T0 in filt_sav_k:
                             endtime=UTCDateTime(T0.strftime('%Y%m%d'))+86400-1/sampl)
                 tempD = data_cut(D,Data2='',t1=T0,t2=T0+template_length)
                 D.clear()
-                if sum(np.isnan(tempD)):
+                if np.sum(np.isnan(tempD)):
                     comp_complete_flag = False
                     break # template has issue
                 daily_files, days = daily_select(dataDir, net_sta, comp+i_comp,

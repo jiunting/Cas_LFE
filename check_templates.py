@@ -24,11 +24,14 @@ templates_files.sort()
 
 #templates_files = ["./template_match/Temp_2006-03-01T225500.npy"]
 #templates_files = ["./template_match/Temp_2006-03-03T120130.npy"]
-templates_files = ["./template_match/Temp_2005-09-03T071338.425000.npy"]
+#templates_files = ["./template_match/Temp_2005-09-03T071338.425000.npy"]
+#templates_files = ["./template_match/Temp_2005-09-03T071350.145000.npy"]
+#templates_files = ["./template_match/Temp_2005-09-18T024010.895000.npy"]
+templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
 
 t = np.arange(int(sampl*template_length+1))/sampl
 props = dict(boxstyle='round', facecolor='white', alpha=0.7)
-i_comp = 'Z'
+i_comp = 'E'
 for templates in templates_files:
     print('Now dealing with:',templates,templates.replace('Temp','CCF').replace('.npy','.png'))
     template_time = templates.split('/')[-1].split('_')[1].replace('.npy','')
