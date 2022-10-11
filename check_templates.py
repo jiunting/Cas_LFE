@@ -27,7 +27,8 @@ templates_files.sort()
 #templates_files = ["./template_match/Temp_2005-09-03T071338.425000.npy"]
 #templates_files = ["./template_match/Temp_2005-09-03T071350.145000.npy"]
 #templates_files = ["./template_match/Temp_2005-09-18T024010.895000.npy"]
-templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
+#templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
+templates_files = ["./template_match/Temp_2006-03-01T225300.npy"]
 
 t = np.arange(int(sampl*template_length+1))/sampl
 props = dict(boxstyle='round', facecolor='white', alpha=0.7)

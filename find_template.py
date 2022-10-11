@@ -42,6 +42,7 @@ search_days = 29 # number of days to be searched
 MAD_thresh = 8 # 8 times the median absolute deviation
 CC_range = 5 # group the CC if they are close in time. [Unit: second] so this value *sampl is the actual pts.
 use_comp = ['E','N','Z']
+make_fig = False # plot daily stacked CCF for checking
 
 """
 Below define the data location and the channel (e.g. HH, BH, EH) for each station
@@ -577,9 +578,9 @@ for T0 in filt_sav_k:
         print('   ---   Threshold=%f'%(thresh))
         t = (np.arange(86400*sampl)/sampl)[:len(sum_CCF)]
         _days = int((UTCDateTime(i_common)-UTCDateTime(T0.strftime('%Y%m%d')))/86400) #actual day after the template date
-        #plt.plot(t,sum_CCF+i,color=[0.2,0.2,0.2],lw=0.5)
-        plt.plot(t,sum_CCF+_days,color=[0.2,0.2,0.2],lw=0.5)
-        plt.text(t[-1],_days,'%d'%(n_sta))
+        if make_fig:
+            plt.plot(t,sum_CCF+_days,color=[0.2,0.2,0.2],lw=0.5)
+            plt.text(t[-1],_days,'%d'%(n_sta))
         #=====find detections=====
         idx = np.where(sum_CCF>=thresh)[0]
         if len(idx)>0:
@@ -593,9 +594,9 @@ for T0 in filt_sav_k:
             idx, new_CC = find_group(idx, sum_CCF[idx], t_wind=CC_range, sampl=sampl)
             print('after group>>',idx,new_CC,t[idx])
             for ii in idx:
-                sav_flag = True
-                #plt.plot(t[ii],sum_CCF[ii]+i,'r.')
-                plt.plot(t[ii],sum_CCF[ii]+_days,'r.')
+                sav_flag = True # find detection!
+                if make_fig:
+                    plt.plot(t[ii],sum_CCF[ii]+_days,'r.')
                 #=====stack data based on the detected time (i.e. idx) for each stations=====
                 #for k in templates.keys(): not all the k have data
                 for k in avail_k:
@@ -613,29 +614,30 @@ for T0 in filt_sav_k:
                         templates[k]['time'] = [UTCDateTime(i_common)+ii/sampl]
         if i==0:
             #plot itself
-            plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
-            print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
+            if make_fig:
+                plt.plot(T0-UTCDateTime(T0.year,T0.month,T0.day), sum_CCF.max(), 'g.')
+                print('plot itself at %.2f sec'%(T0-UTCDateTime(T0.year,T0.month,T0.day)))
     for k in templates.keys():
         if 'tmp_data' in templates[k]:
             print('delete tmp_data for',k)
             del templates[k]['tmp_data'] #remove daily data
-    if sav_flag: #only save those have matching
+    if sav_flag: #only save those have detections to numpy array
         np.save('./template_match/Temp_%s.npy'%(T0.isoformat().replace(':','')),templates)
     else:
         plt.clf()
         plt.close()
         gc.collect()
         continue
-    ax=plt.gca()
-    ax.tick_params(pad=1.5,length=0.5,size=2.5,labelsize=10)
-    #plt.title('Template:%s (stack %d stations)'%(T0.isoformat(), n_sta))
-    plt.title('Template:%s'%(T0.isoformat()))
-    plt.xlim([0,t.max()])
-    plt.ylim([-1,search_days+1])
-    plt.xlabel('Seconds',fontsize=14,labelpad=0)
-    plt.ylabel('Days since template',fontsize=14,labelpad=0)
-    plt.savefig('./template_match/CCF_%s.png'%(T0.isoformat().replace(':','')),dpi=300)
-    plt.clf()
-    plt.close()
-    gc.collect()
+    if make_fig:
+        ax=plt.gca()
+        ax.tick_params(pad=1.5,length=0.5,size=2.5,labelsize=10)
+        plt.title('Template:%s'%(T0.isoformat()))
+        plt.xlim([0,t.max()])
+        plt.ylim([-1,search_days+1])
+        plt.xlabel('Seconds',fontsize=14,labelpad=0)
+        plt.ylabel('Days since template',fontsize=14,labelpad=0)
+        plt.savefig('./template_match/CCF_%s.png'%(T0.isoformat().replace(':','')),dpi=300)
+        plt.clf()
+        plt.close()
+        gc.collect()
     #break
