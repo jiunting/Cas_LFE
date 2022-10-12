@@ -27,8 +27,9 @@ templates_files.sort()
 #templates_files = ["./template_match/Temp_2005-09-03T071338.425000.npy"]
 #templates_files = ["./template_match/Temp_2005-09-03T071350.145000.npy"]
 #templates_files = ["./template_match/Temp_2005-09-18T024010.895000.npy"]
-#templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
-templates_files = ["./template_match/Temp_2006-03-01T225300.npy"]
+templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
+#templates_files = ["./template_match/Temp_2006-03-01T225300.npy"]
+#templates_files = ["./template_match/Temp_2006-03-03T120230.npy"]
 
 t = np.arange(int(sampl*template_length+1))/sampl
 props = dict(boxstyle='round', facecolor='white', alpha=0.7)
@@ -47,10 +48,16 @@ for templates in templates_files:
             print('- station %s not enough stacking'%(sta))
             continue
         plt.subplot(1,2,1)
-        plt.plot(t, i*1.5 + templates[sta]['template'][i_comp]/np.max(np.abs(templates[sta]['template'][i_comp])),'-',lw=1.5,alpha=0.9)
+        try:
+            plt.plot(t, i*1.5 + templates[sta]['template'][i_comp]/np.max(np.abs(templates[sta]['template'][i_comp])),'-',lw=1.5,alpha=0.9)
+        except:
+            plt.plot(t, i*1.5 + templates[sta]['template']/np.max(np.abs(templates[sta]['template'])),'-',lw=1.5,alpha=0.9)
         plt.text(0.8,i*1.5+0.3, sta,fontsize=12,bbox=props) #plot station name
         plt.subplot(1,2,2)
-        plt.plot(t, i*1.5 + templates[sta]['stack'][i_comp]/np.max(np.abs(templates[sta]['stack'][i_comp])),'-',lw=1.5,alpha=0.9)
+        try:
+            plt.plot(t, i*1.5 + templates[sta]['stack'][i_comp]/np.max(np.abs(templates[sta]['stack'][i_comp])),'-',lw=1.5,alpha=0.9)
+        except:
+            plt.plot(t, i*1.5 + templates[sta]['stack']/np.max(np.abs(templates[sta]['stack'])),'-',lw=1.5,alpha=0.9)
         plt.text(t[-1],i*1.5,'%d'%templates[sta]['Nstack'])
     plt.subplot(1,2,1)
     plt.title('Template (%s)'%(template_time),fontsize=14)
@@ -66,3 +73,8 @@ for templates in templates_files:
     plt.subplots_adjust(left=0.08,top=0.88,right=0.97,bottom=0.1,wspace=0.07)
     plt.show()
     #break
+
+
+SNB
+SSIB
+KLNB

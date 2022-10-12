@@ -42,6 +42,7 @@ search_days = 29 # number of days to be searched
 MAD_thresh = 8 # 8 times the median absolute deviation
 CC_range = 5 # group the CC if they are close in time. [Unit: second] so this value *sampl is the actual pts.
 use_comp = ['E','N','Z']
+excluded_sta = ['PO.KLNB', ] # excluded stations
 make_fig = False # plot daily stacked CCF for checking
 
 """
@@ -378,6 +379,9 @@ sav_T = {}
 for csv in csvs:
     print('Now loading :',csv)
     net_sta = csv.split('/')[-1].split('_')[-1].replace('.csv','')
+    if net_sta in excluded_sta:
+        print(' Skip station:',net_sta)
+        continue
     T = dect_time(csv, thresh=0.1)
     if T is None:
         continue
@@ -406,7 +410,7 @@ for k in all_T.keys():
 sav_k.sort()
 sav_k = np.array([UTCDateTime(i) for i in sav_k])
 print('Total of candidate templates=%d after N_min=%d filter'%(len(sav_k), N_min))
-print('  (For example:sav_k[0]=%s, startimg from this time T0 to T0+%f s) '%(sav_k[0].isoformat().replace(':',''),template_length))
+print('  (For example:sav_k[0]=%s, starting from this time T0 to T0+%f s) '%(sav_k[0].isoformat().replace(':',''),template_length))
 
 #
 detc_time, detc_nums = get_daily_nums(sav_k)
@@ -447,6 +451,7 @@ filt_sav_k = sav_k[filt_idx]
 all_sta = sav_T.keys()
 #run_flag = False
 for T0 in filt_sav_k:
+    T0 = UTCDateTime("20060303T120230")
     '''
     if T0==UTCDateTime("20060302T023945"):
         run_flag = True
@@ -459,7 +464,10 @@ for T0 in filt_sav_k:
     # find available stations
     T0_str = T0.strftime('%Y-%m-%dT%H:%M:%S.%f')+'Z'
     print(' - stations have detections:',all_T[T0_str]['sta'])
-    stations = filt_cent(all_T[T0_str]['sta'], stainfo, Cent_dist, N_min) #adding a centroid distance filter 10/11
+    if Cent_dist:
+        stations = filt_cent(all_T[T0_str]['sta'], stainfo, Cent_dist, N_min) #adding a centroid distance filter 10/11
+    else:
+        stations = all_T[T0_str]['sta']
     if len(stations)==0:
         continue
     templates = {}
@@ -600,6 +608,13 @@ for T0 in filt_sav_k:
                 #=====stack data based on the detected time (i.e. idx) for each stations=====
                 #for k in templates.keys(): not all the k have data
                 for k in avail_k:
+                    stack_flag = True #check if there's any nan in the data to be stacked
+                    for i_comp in use_comp:
+                        if np.sum(np.isnan(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)])):
+                            stack_flag = False
+                            break
+                    if not stack_flag:
+                        continue
                     if 'stack' in templates[k]:
                         for i_comp in use_comp:
                             templates[k]['stack'][i_comp] += templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]/np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))
