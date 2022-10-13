@@ -36,9 +36,12 @@ warnings.simplefilter('error')
 
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
-N_min = 3 # minimum number of stations have detection in the same time (same starttime window)
+#N_min = 3 # minimum number of stations have detection in the same time (same starttime window)
+N_min = 5 # minimum number of stations have detection in the same time (same starttime window)
+#Cent_dist = 50 #[float or False] select stations within x-km from the centroid distance, after this filter check back if the remaining sta meet the N_min.
 Cent_dist = 30 #[float or False] select stations within x-km from the centroid distance, after this filter check back if the remaining sta meet the N_min.
-search_days = 29 # number of days to be searched
+#search_days = 29 # number of days to be searched
+search_days = 100 # number of days to be searched
 MAD_thresh = 8 # 8 times the median absolute deviation
 CC_range = 5 # group the CC if they are close in time. [Unit: second] so this value *sampl is the actual pts.
 use_comp = ['E','N','Z']
@@ -451,7 +454,7 @@ filt_sav_k = sav_k[filt_idx]
 all_sta = sav_T.keys()
 #run_flag = False
 for T0 in filt_sav_k:
-    T0 = UTCDateTime("20060303T120230")
+    #T0 = UTCDateTime("20060303T120230")
     '''
     if T0==UTCDateTime("20060302T023945"):
         run_flag = True
@@ -611,6 +614,9 @@ for T0 in filt_sav_k:
                     stack_flag = True #check if there's any nan in the data to be stacked
                     for i_comp in use_comp:
                         if np.sum(np.isnan(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)])):
+                            stack_flag = False
+                            break
+                        if np.max(np.abs(templates[k]['tmp_data'][i_comp][ii:ii+int(template_length*sampl+1)]))==0:
                             stack_flag = False
                             break
                     if not stack_flag:
