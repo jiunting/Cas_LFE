@@ -93,31 +93,6 @@ def get_daily_nums(T):
     sav_num = sav_num-1 #daily number correct by 1
     return np.array(sav_T),np.array(sav_num)
 
-'''
-#old function assume each day has at least 1 detection, remove this function in the next version
-def get_daily_nums(T):
-    # get number of events each day
-    # T is the sorted timeseries of the occurrence
-    T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
-    T1 = T0 + datetime.timedelta(1)
-    sav_num = [] # number of events in a day
-    sav_T = []
-    n = 0
-    for i in T:
-        if T0<=i<T1:
-            n += 1
-        else:
-            if n!=0:
-                sav_T.append(T0+datetime.timedelta(0.5))
-                sav_num.append(n)
-            #update T0,T1 to next day
-            T0 = T1
-            T1 = T0 + datetime.timedelta(1)
-            n = 1
-    sav_T.append(T0+datetime.timedelta(0.5))
-    sav_num.append(n)
-    return np.array(sav_T),np.array(sav_num)
-'''
 
 # load original detection file (from template matching)
 # load family and arrival information
@@ -136,6 +111,12 @@ with open(detcFile,'r') as IN1:
         sav_OT_template.append(OT.datetime)
 
 cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
+
+# load tremor
+tremor = pd.read_csv("tremor_events-2009-08-06T00_00_00-2014-12-31T23_59_59.csv")
+tremor = tremor[(tremor['lon']>=-124.5) & (tremor['lon']<=-123) & (tremor['lat']>=48.1) & (tremor['lat']<=49.3)]
+tremor_t = [UTCDateTime(tt).datetime for tt in tremor['starttime']]
+trem_time,trem_daynums = get_daily_nums(sorted(tremor_t))
 
 # load model detection .csv file
 #csvs = glob.glob('./Detections_S_new/*.csv')
@@ -164,14 +145,17 @@ plt.figure()
 #plt.plot(sav_OT_template,np.zeros(len(sav_OT_template)),'k.',markersize=1)
 #plt.plot(cat_time,(cat_daynums/max(np.abs(cat_daynums)))*0.5,'-',color=[0.5,0.5,0.5])
 plt.fill_between(cat_time,(cat_daynums/max(np.abs(cat_daynums)))*0.8,0,color=[0.5,0.5,0.5])
-plt.text(max(sav_OT_template),0,'catalog',fontsize=10)
+plt.text(max(sav_OT_template),0,'Catalog',fontsize=10)
 for n,k in enumerate(sav_detcTime.keys()):
     print(' plotting k=%s, len=%d'%(k,len(sav_detcTime[k])))
     #plt.plot(sav_detcTime[k],np.ones(len(sav_detcTime[k]))*(n+1),'.',markersize=1)
     sav_T,sav_daynums = get_daily_nums(sav_detcTime[k]) #get daily number tcs
     h = plt.fill_between(sav_T,(sav_daynums/max(np.abs(sav_daynums)))*0.8+(n+1),(n+1),linewidth=0.1)
     h.set_edgecolor(h.get_facecolor())
-    plt.text(max(sav_detcTime[k]),n+1,k,fontsize=10)
+    if k=='CN.PFB':
+        plt.text(max(sav_detcTime[k]),n+1,k,ha='center',fontsize=10)
+    else:
+        plt.text(max(sav_detcTime[k]),n+1,k,fontsize=10)
     
 plt.yticks([],[])
 plt.xlabel('Time (year)',fontsize=14,labelpad=0)
@@ -186,7 +170,7 @@ ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 
 #plt.savefig('detection_tcs_all_P_y0.1.png')
 #plt.savefig('detection_tcs_all_P_y0.1.pdf')
-plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=300)
+plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=450)
 #plt.savefig('detection_tcs_all_S_C8_new_y0.1_1005.png',dpi=300)
 #plt.savefig('detection_tcs_all_P_new_y0.1_0906.png',dpi=300)
 plt.close()
@@ -248,16 +232,31 @@ idx_cat_st = np.where(cat_time==Tst)[0][0]
 idx_detc_st = np.where(detc_time==Tst)[0][0]
 idx_cat_end = np.where(cat_time==Tend)[0][0]
 idx_detc_end = np.where(detc_time==Tend)[0][0]
+idx_trem_end = np.where(trem_time<=Tend)[0][-1]
 
-plt.plot(detc_time[idx_detc_st:idx_detc_end+1], np.cumsum(detc_nums[idx_detc_st:idx_detc_end+1]), 'r', lw=3, label='Model')
-plt.plot(cat_time[idx_cat_st:idx_cat_end+1], np.cumsum(cat_daynums[idx_cat_st:idx_cat_end+1]), 'k', lw=3, label='Catalog')
-plt.legend()
-plt.ylabel('Cumulative number', fontsize=14,labelpad=0)
+h1 = plt.plot(detc_time[idx_detc_st:idx_detc_end+1], np.cumsum(detc_nums[idx_detc_st:idx_detc_end+1]), 'r', lw=3, label='Model')
+h2 = plt.plot(cat_time[idx_cat_st:idx_cat_end+1], np.cumsum(cat_daynums[idx_cat_st:idx_cat_end+1]), 'k', lw=3, label='Catalog')
+#h2 = plt.plot(cat_time, np.cumsum(cat_daynums), 'k', lw=3, label='Catalog')
+#plt.legend()
+plt.ylabel('Cumulative LFE Number', fontsize=14,labelpad=0)
 plt.xlabel('Time (year)', fontsize=14,labelpad=0)
 ax1=plt.gca()
 ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
-plt.grid('True')
-plt.savefig('detection_tcs_merged_cum_S_new_y0.1_1005.png',dpi=300)
+ax1.grid(axis='y')
+# add tremor plot
+ax2 = ax1.twinx()
+ax2.set_xlim(ax1.get_xlim())
+ax2.grid(False)
+#h3 = plt.plot(trem_time, np.cumsum(trem_daynums), 'b', lw=3, label='Tremor')
+h3 = plt.plot(trem_time[:idx_trem_end], np.cumsum(trem_daynums[:idx_trem_end]), 'b', lw=3, label='Tremor')
+ax2.ticklabel_format(style='sci', axis='y',scilimits=(0,0))
+ax2.spines['right'].set_color('b') 
+ax2.tick_params(axis='y', colors='b')
+ax2.yaxis.label.set_color('blue') 
+ax2.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
+plt.ylabel('Cumulative Tremor Number',fontsize=14,labelpad=0,color='b')
+plt.legend([h1[0],h2[0],h3[0]],['Model','Catalog','Tremor'])
+plt.savefig('detection_tcs_merged_cum_S_new_y0.1_1026.png',dpi=450)
 #plt.savefig('detection_tcs_merged_cum_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 
