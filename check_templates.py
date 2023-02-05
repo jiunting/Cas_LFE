@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 import glob
 
 
-templates_path = "./template_match"
+#templates_path = "./template_match"
+templates_path = "./template_match_knownLFE"
 sampl = 100 #sampling rate
 template_length = 15 # template length in sec
 min_Nsta = 3 # number of station involved
@@ -27,7 +28,7 @@ templates_files.sort()
 #templates_files = ["./template_match/Temp_2005-09-03T071338.425000.npy"]
 #templates_files = ["./template_match/Temp_2005-09-03T071350.145000.npy"]
 #templates_files = ["./template_match/Temp_2005-09-18T024010.895000.npy"]
-templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
+#templates_files = ["./template_match/Temp_2005-09-18T024019.635000.npy"]
 #templates_files = ["./template_match/Temp_2006-03-01T225300.npy"]
 #templates_files = ["./template_match/Temp_2006-03-03T120230.npy"]
 
@@ -43,6 +44,8 @@ for templates in templates_files:
         continue
     plt.figure(figsize=(12,6.5))
     for i,sta in enumerate(templates.keys()):
+        if 'Nstack' not in templates[sta]:
+            continue
         Nstack = templates[sta]['Nstack']
         if Nstack<min_Nstack:
             print('- station %s not enough stacking'%(sta))
@@ -75,6 +78,6 @@ for templates in templates_files:
     #break
 
 
-SNB
-SSIB
-KLNB
+#SNB
+#SSIB
+#KLNB

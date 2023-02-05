@@ -13,7 +13,7 @@ import datetime
 import seaborn as sns
 
 
-def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=None) -> np.ndarray:
+def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=None, return_all: bool=False) -> np.ndarray:
     """
     Get detection time for 1). ML detection in .csv file or 2). catalog file.
     If input is .csv file, return the `window` starttime so that is easier to match with other stations
@@ -28,7 +28,8 @@ def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=No
         Threshold of selection. Only apply when is_catalog==False (i.e. using ML detection csv files)
     EQinfo: str
         Path of the EQinfo file i.e. "sav_family_phases.npy"
-    
+    return_all: bool
+        Also return deection time, not just the window starttime
     OUTPUTs
     =======
     sav_OT: np.array[datetime] or None if empty detection
@@ -60,7 +61,11 @@ def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=No
         csv = pd.read_csv(file_path)
         if len(csv)==0:
             return None
-        T = csv[csv['y']>=thresh].starttime.values
+        T = csv[csv['y']>=thresh]
+        if return_all:
+            return T.starttime.values, np.array([i.split('_')[-1] for i in T.id])
+        else:
+            return T.starttime.values
         #net_sta = file_path.split('/')[-1].split('_')[-1].replace('.csv','')
         #prepend = csv.iloc[0].id.split('_')[0]
         #T = pd.to_datetime(csv[csv['y']>=thresh].id,format=prepend+'_%Y-%m-%dT%H:%M:%S.%f')
@@ -181,14 +186,17 @@ plt.close()
 # 2. plot merged detection timeseries (copy from find_template.py)
 #=====get the number of detections in the same starttime window=====
 #=====future improvement: consider nearby windows i.e. +-15 s
-sav_T = {}
+sav_T = {} # net.sta:starttime
+#st2detc = {} #net.sta: st->dect
 for csv in csvs:
     print('Now in :',csv)
     net_sta = csv.split('/')[-1].split('_')[-1].replace('.csv','')
     T = dect_time(csv, thresh=0.1)
+    #T, Td = dect_time(csv, thresh=0.1, return_all=True)
     if T is None:
         continue
     sav_T[net_sta] = T
+    #st2detc[net_sta] = {T[i]:Td[i] for i in range(len(T))}
 
 print('-----Initialize all_T. Min=1, Max=%d'%(len(sav_T)))
 all_T = {}
