@@ -127,9 +127,62 @@ for ista in all_T[sav_k[0]]['sta']:
 """
 #=====EXAMPLE END=====
 
+def sort_arrivals(sta_phase, arrival, T0, sort_list):
+    """
+    Sort the arrivals in the correct order used by grid search
+    
+    INPUTs
+    ======
+    sta_phase: list
+        List of station name and phase with available arrival
+    arrival: list
+        List of arrival in string that can be read by UTCDateTime
+    T0: str
+        Window starttime or anytime that can be read by UTCDateTime
+    sort_list: list
+        List of sta_phase to be filled
+        e.g. ['PFB_P', 'TWKB_P', 'TWGB_P', 'SNB_P','SNB_S', 'KLNB_S', 'TSJB_S']
+    OUTPUTs
+    =======
+    res: np.ndarray
+        An array of arrival time relative to the window st. np.nan if no data
+    """
+    res = [np.nan] * len(sort_list)
+    name2idx = {sort_list[i]:i for i in range(len(sort_list))}
+    for i,sta_phs in enumerate(sta_phase):
+        res[name2idx[sta_phs]] = UTCDateTime(arrival[i]) - UTCDateTime(T0)
+    return np.array(res)
+
+
+def grid_searching_loc(grid_loc, Travel, arrivals):
+    sav_err = []
+    for g in grid_loc:
+        dt = arrivals - Travel['T'][g]
+        dt = dt[~np.isnan(dt)] #remove nan value
+        dt = dt - np.mean(dt)
+        sav_err.append(np.mean(np.abs(dt))) # error
+    return np.array(sav_err)
+        
+
+
+grid_loc = list(Travel['T'].keys())
 
 for k in sav_k:
     print('Window start:',k,'; %d detections.'%(len(all_T[k]['sta'])))
+    #save result into list
+    sta_phase = []
+    arrival = []
+    if len(all_T[k]['sta'])<8:
+        continue
     for ista in all_T[k]['sta']:
-        print('  ',st2detc[ista][k],ista)
+        print('  ', st2detc[ista][k],ista,UTCDateTime(st2detc[ista][k])-UTCDateTime(k))
+        sta_phase.append(ista.split('.')[1]+'_'+'S') #only S here
+        arrival.append(st2detc[ista][k])
+    arrivals = sort_arrivals(sta_phase, arrival, T0=k, sort_list=Travel['sta_phase'])
+    # grid search for best location
+    err = grid_searching_loc(grid_loc, Travel, arrivals)
+    # make some plot
+    idx = np.arange(len(g))[::61] # error at 0km
+    plt.pcolor(lon, lat, err[idx].reshape(140,120));plt.colorbar()
+    plt.show()
     break
