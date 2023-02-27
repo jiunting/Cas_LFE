@@ -13,7 +13,9 @@ import pandas as pd
 import glob
 from obspy import UTCDateTime
 import datetime
-from numba import njit
+import xarray as xr
+import time
+from numba import float64, guvectorize
 
 
 def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=None, return_all: bool=False) -> np.ndarray:
@@ -167,7 +169,6 @@ def grid_searching_loc(grid_loc, Travel, arrivals):
     return np.array(sav_err)
     
 
-
 def grid_searching_loc(loc, Travel, arrivals):
     dt = arrivals - Travel[loc]
     dt = dt[~np.isnan(dt)] #remove nan value
@@ -175,19 +176,44 @@ def grid_searching_loc(loc, Travel, arrivals):
     return np.mean(np.abs(dt)) # error
     
         
-        
 
 # Load the travel time table
-#Travel = np.load("Travel.npy",allow_pickle=True)
-#Travel = Travel.item()
-#grid_loc = list(Travel['T'].keys()) # 1,024,800 grid nodes to be searched i.e. #Shape of lon,lat,dep=(140, 120, 61)
+Travel = np.load("./Travel.npy",allow_pickle=True)
+Travel = Travel.item()
+grid_loc = list(Travel['T'].keys()) # 1,024,800 grid nodes to be searched i.e. #Shape of lon,lat,dep=(140, 120, 61)
+grid_loc_np = np.array(grid_loc)
+coords = np.array([coord for coord in Travel['T'].keys()])
+TT = np.array([Travel['T'][coord] for coord in Travel['T'].keys()])
 
-#Travel_reduced = np.load("Travel_reduced.npy",allow_pickle=True)
-Travel_reduced = np.load("Travel_reduced_25km.npy",allow_pickle=True)
-Travel_reduced = Travel_reduced.item()
-grid_loc_reduced = list(Travel_reduced['T'].keys())  #8736 points
-grid_loc_reduced_np = np.array([g for g in grid_loc_reduced])
+ds_var = xr.Dataset(
+            data_vars=dict(
+                TT=(["idx", "sta"], TT,
+                   dict(description="arrival time", units="s")),
+                lon=(["idx"], coords[:,0],
+                   dict(description="Longitude", units="degree")),
+                lat=(["idx"], coords[:,1],
+                   dict(description="Latitude", units="degree")),
+                dep=(["idx"], coords[:,2],
+                   dict(description="depth", units="km")),
+            ),
+            coords=dict(
+                idx=(["idx"], np.arange(TT.shape[0])),
+                sta=(["sta"], np.arange(TT.shape[1])),
+            )
+    
+).chunk({'idx':100})
+ds_var
 
+
+@guvectorize(
+    "(float64[:], float64[:], float64[:])",
+    "(n), (n) -> ()"
+)
+def core_funct_v2(travel, arrivals, res):
+    dt = arrivals - travel
+    dt = dt[~np.isnan(dt)] #remove nan value
+    dt = dt - np.mean(dt)
+    res[0] = np.mean(np.abs(dt)) # error
 
 
 # Grid seach each grid nodes-- this is slow
@@ -200,24 +226,21 @@ for ik, k in enumerate(sav_k):
     #save result into list
     sta_phase = []
     arrival = []
-    #if len(all_T[k]['sta'])<8:
-    #    continue
     for ista in all_T[k]['sta']:
         #print('  ', st2detc[ista][k],ista,UTCDateTime(st2detc[ista][k])-UTCDateTime(k))
         sta_phase.append(ista.split('.')[1]+'_'+'S') #only S here
         arrival.append(st2detc[ista][k])
-    #arrivals = sort_arrivals(sta_phase, arrival, T0=k, sort_list=Travel['sta_phase'])
-    arrivals = sort_arrivals(sta_phase, arrival, T0=k, sort_list=Travel_reduced['sta_phase'])
+    arrivals = sort_arrivals(sta_phase, arrival, T0=k, sort_list=Travel['sta_phase'])
     # grid search for best location
+    err = xr.apply_ufunc(core_funct_v2, ds_var.TT, arrivals, input_core_dims=[["sta"], []], dask = 'allowed', output_dtypes=float)
+    err = np.array(err)
     #err = grid_searching_loc(grid_loc, Travel['T'], arrivals)
-    err = grid_searching_loc(grid_loc_reduced, Travel_reduced['T'], arrivals)
+    idx = np.argmin(err) # error
     # make some plot
-    #idx = np.arange(len(g))[::61] # error at 0km
-    #plt.pcolor(lon, lat, err[idx].reshape(140,120),cmap='jet');plt.colorbar()
+    #idx2 = np.where(grid_loc_np[:,2]==grid_loc_np[idx,2])[0]
+    #plt.scatter(grid_loc_np[idx2,0], grid_loc_np[idx2,1], c=err[idx2],cmap='jet');plt.colorbar()
     #plt.show()
-    idx = np.argmin(err)
-    #print('  loc=%.2f %.2f %.1f'%(grid_loc_reduced_np[idx,0],grid_loc_reduced_np[idx,1],grid_loc_reduced_np[idx,2]))
-    OUT1.write('%s %f %f %f %f %d\n'%(k,grid_loc_reduced_np[idx,0],grid_loc_reduced_np[idx,1],grid_loc_reduced_np[idx,2],np.min(err),len(all_T[k]['sta'])))
+    OUT1.write('%s %f %f %f %f %d\n'%(k,grid_loc_np[idx,0],grid_loc_np[idx,1],grid_loc_np[idx,2],err[idx],len(all_T[k]['sta'])))
     #idx = np.where(grid_loc_reduced_np[:,-1]==grid_loc_reduced_np[idx,-1])
     #plt.scatter(grid_loc_reduced_np[idx,0], grid_loc_reduced_np[idx,1], c=err[idx]);plt.colorbar()
     #plt.show()
@@ -244,14 +267,14 @@ OUT1.close()
 #    return result
 #
 ## split the grid and Travel
-grid_loc_batches = split_array(grid_loc, n_cores)
-Travel_batches = []
-for i_batch in grid_loc_batches:
-    Travel2 = {loc:Travel['T'][loc] for loc in i_batch}
-    Travel_batches.append(Travel2)
-
-assert sum([len(grid_loc_batches[ii]) for ii in range(len(grid_loc_batches))])==len(grid_loc), 'Check to size!'
-
-results = Parallel(n_jobs=n_cores,verbose=0)(delayed(grid_searching_loc)(grid_loc_batches[i], Travel_batches[i], arrivals) for i in range(len(grid_loc_batches))  )
-print(results)
+#grid_loc_batches = split_array(grid_loc, n_cores)
+#Travel_batches = []
+#for i_batch in grid_loc_batches:
+#    Travel2 = {loc:Travel['T'][loc] for loc in i_batch}
+#    Travel_batches.append(Travel2)
+#
+#assert sum([len(grid_loc_batches[ii]) for ii in range(len(grid_loc_batches))])==len(grid_loc), 'Check to size!'
+#
+#results = Parallel(n_jobs=n_cores,verbose=0)(delayed(grid_searching_loc)(grid_loc_batches[i], Travel_batches[i], arrivals) for i in range(len(grid_loc_batches))  )
+#print(results)
 

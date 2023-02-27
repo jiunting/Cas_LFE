@@ -10,6 +10,7 @@ Converts srRays files to smaller .pkl files for I/O purposes
 
 import pickle
 import pandas as pd
+import numpy as np
 import scipy.io as sio
 import mat73
 import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ file = "/Users/jtlin/Documents/Project/Cas_LFE/Locating/svi_lfes/srOutput/srRays
 refsta = mat73.loadmat(file)
 reftts = refsta['srRays']['time'] # shape of x,y,z = 120,140,61. Centered at (-123.75, 48.7) with spacing=1km. Z=0~60km.
 
-iz = 1 #check the ith depth
+iz = 10 #check the ith depth
 
 plt.subplot(1,2,1)
 plt.pcolor(refsta['srRays']['xg'],refsta['srRays']['yg'],reftts[:,:,iz].T,cmap='plasma')
@@ -102,9 +103,13 @@ for ip,phase in enumerate(['P','S']):
         if i==0 and ip==0:
             lon, lat = xy2lonlat(refsta) # only run once since all the grid nodes (lon/lat/dep) are the same
         #lon.shape=lat.shape=(140,120)
-        for ilat in range(lat.shape[0]): #0~139
-            for ilon in range(lon.shape[1]): #0~119
-                for idep,dep in enumerate(refsta['srRays']['zg']):
+        #for ilat in range(lat.shape[0]): #0~139
+        for ilat in range(lat.shape[0])[::5]: #0~139
+            #for ilon in range(lon.shape[1]): #0~119
+            for ilon in range(lon.shape[1])[::5]: #0~119
+                #for idep,dep in enumerate(refsta['srRays']['zg']):
+                #for idep,dep in enumerate(refsta['srRays']['zg'][::5]):
+                for idep,dep in enumerate(refsta['srRays']['zg'][25::5]):
                     #print(lon[ilat,ilon],lat[ilat,ilon],dep,'Travel=%f'%(reftts[ilon,ilat,idep])) #note the shape are different!
                     if (lon[ilat,ilon],lat[ilat,ilon],dep) in Travel['T']:
                         Travel['T'][(lon[ilat,ilon],lat[ilat,ilon],dep)].append(reftts[ilon,ilat,idep]) #append a time at this grid node
@@ -118,7 +123,9 @@ for ig in Travel['T'].keys():
     Travel['T'][ig] = np.array(Travel['T'][ig])
 
 # Finally save the travel time
-np.save('Travel.npy',Travel)
+#np.save('Travel.npy',Travel)
+#np.save('Travel_reduced.npy',Travel)
+np.save('Travel_reduced_25km.npy',Travel)
 
 
 
