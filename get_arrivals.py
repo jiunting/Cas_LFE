@@ -11,20 +11,22 @@ Created on Thu Nov 3 19:55:57 2022
 import glob
 import numpy as np
 import pandas as pd
+from obspy import UTCDateTime
 
 
 #---------------parameter setting-----------------
 N_min = 5 # at least N station detect arrival in the same 15s time window
 threshold = 0.5 # decision threshold
 
-use_P = False # add P arrival?
+use_P = True # add P arrival?
 N_min_P = 3
 threshold_P = 0.5
 
 #excluded_sta = ['PO.KLNB', ] # excluded stations
 excluded_sta = []
 
-fileout = "./arrivals_sta%d_y%.1f.csv"%(N_min,threshold)
+#fileout = "./arrivals_sta%d_y%.1f.csv"%(N_min,threshold)
+fileout = "./arrivals_sta%d_y%.1f_PS.csv"%(N_min,threshold)
 
 #---------------parameter setting END-----------------
 
@@ -155,6 +157,7 @@ if use_P:
 
 #STEP final. =====Find the corresponding arrival time and write the output=====
 OUT1 = open(fileout,'w')
+NID = 1
 for st in sav_k: # for each window start time (i.e. st), get the corresponding detected arrival time for each stations
     results = {} #collecting result to write later
     for sta in all_T[st]['sta']: # loop the stations has detection in this start window
@@ -171,6 +174,7 @@ for st in sav_k: # for each window start time (i.e. st), get the corresponding d
                     else:
                         results[sta] = {'P':Parr}
                     print('P arr=',Parr)
+    """
     # write to file change the output format!
     for sta in results:
         if use_P:
@@ -185,6 +189,14 @@ for st in sav_k: # for each window start time (i.e. st), get the corresponding d
         else:
             OUT1.write('%s\n'%('None'))
     OUT1.write('#\n')
+    """
+    #===write to NLLoc format===
+    OUT1.write('#ID:%s\n'%(NID))
+    NID += 1
+    for sta in results.keys():
+        for phs in results[sta]:
+            arr = UTCDateTime(results[sta][phs])
+            OUT1.write('%6s ?  ?    ? %1s      ? %s GAU  1.00e-01 -1.00e+00 -1.00e+00 -1.00e+00\n'%(sta.split('.')[1],phs,arr.strftime('%Y%m%d %H%M %S.%f')[:19]))
 
 
 

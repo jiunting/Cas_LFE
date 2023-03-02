@@ -78,8 +78,8 @@ def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=No
         return T
 
 #------settings-------
-thres = 0.2 # y>=thres to be a detection
-N_min = 5 # minumum stations have detection at the same time
+thres = 0.1 # y>=thres to be a detection
+N_min = 3 # minumum stations have detection at the same time
 detc_dir = "../Detections_S_new/*.csv"
 
 fout = "EQloc2_%.1f_%d_S.txt"%(thres,N_min)
@@ -218,11 +218,12 @@ def core_funct_v2(travel, arrivals, res):
 
 # Grid seach each grid nodes-- this is slow
 OUT1 = open(fout,'w')
+OUT1.close()
 
 for ik, k in enumerate(sav_k):
     #print('Window start:',k,'; %d detections.'%(len(all_T[k]['sta'])))
-    if ik%5000==0:
-        print('%d of %d (%.2f %%)'%(ik,len(sav_k),ik/len(sav_k)*100))
+    #if ik%500==0:
+    #    print('%d of %d (%.2f %%)'%(ik,len(sav_k),ik/len(sav_k)*100))
     #save result into list
     sta_phase = []
     arrival = []
@@ -240,13 +241,15 @@ for ik, k in enumerate(sav_k):
     #idx2 = np.where(grid_loc_np[:,2]==grid_loc_np[idx,2])[0]
     #plt.scatter(grid_loc_np[idx2,0], grid_loc_np[idx2,1], c=err[idx2],cmap='jet');plt.colorbar()
     #plt.show()
+    OUT1 = open(fout,'a') #so that you know the progress
     OUT1.write('%s %f %f %f %f %d\n'%(k,grid_loc_np[idx,0],grid_loc_np[idx,1],grid_loc_np[idx,2],err[idx],len(all_T[k]['sta'])))
+    OUT1.close()
     #idx = np.where(grid_loc_reduced_np[:,-1]==grid_loc_reduced_np[idx,-1])
     #plt.scatter(grid_loc_reduced_np[idx,0], grid_loc_reduced_np[idx,1], c=err[idx]);plt.colorbar()
     #plt.show()
     #break
 
-OUT1.close()
+#OUT1.close()
 
 # Parallel processing
 #n_cores = 40
