@@ -81,44 +81,70 @@ def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=No
 thres = 0.1 # y>=thres to be a detection
 N_min = 3 # minumum stations have detection at the same time
 detc_dir = "../Detections_S_new/*.csv"
+load_if_possible = True # if not, re-run from .csv file anyway
+
+
+# save the arival time results (sav_k and st2dect) so you wont load them again
+all_T_file = "all_T_%.1f_%d.npy"%(thres,N_min)
+sav_k_file = "sav_k_%.1f_%d.npy"%(thres,N_min)
+st2detc_file = "st2detc_%.1f_%d.npy"%(thres,N_min)
 
 fout = "EQloc2_%.1f_%d_S.txt"%(thres,N_min)
 
 csvs = glob.glob(detc_dir)
 
-#load the detection files and get the starttime and detection time for each station
-sav_T = {} # net.sta:starttime
-st2detc = {} #net.sta: starttime->detection time
-for csv in csvs:
-    print('Now in :',csv)
-    net_sta = csv.split('/')[-1].split('_')[-1].replace('.csv','')
-    tmp = dect_time(csv, thresh=0.1, return_all=True)
-    if tmp is None:
-        continue
-    T, Td = tmp
-    sav_T[net_sta] = T
-    st2detc[net_sta] = {T[i]:Td[i] for i in range(len(T))}
+def load_from_csv(csvs):
+    #load the detection files and get the starttime and detection time for each station
+    sav_T = {} # net.sta:starttime
+    st2detc = {} #net.sta: starttime->detection time
+    for csv in csvs:
+        print('Now in :',csv)
+        net_sta = csv.split('/')[-1].split('_')[-1].replace('.csv','')
+        tmp = dect_time(csv, thresh=0.1, return_all=True)
+        if tmp is None:
+            continue
+        T, Td = tmp
+        sav_T[net_sta] = T
+        st2detc[net_sta] = {T[i]:Td[i] for i in range(len(T))}
+    
+    # calculate the number of detections (across stations) in a same time window
+    # improvement: also consider nearby time window
+    print('-----Initialize all_T. Min=1, Max=%d'%(len(sav_T)))
+    all_T = {}
+    for k in sav_T.keys():
+        print('dealing with:',k)
+        for t in sav_T[k]:
+            if t not in all_T:
+                all_T[t] = {'num':1, 'sta':[k]} #['num'] = 1
+            else:
+                all_T[t]['num'] += 1
+                all_T[t]['sta'].append(k)
+    
+    # get the detections where pass the threshold
+    sav_k = [] # keys (i.e. window starttime) that pass the filter
+    for k in all_T.keys():
+        if all_T[k]['num']>=N_min:
+            sav_k.append(k)
+    sav_k.sort()
+    return all_T, sav_k, st2detc
 
-# calculate the number of detections (across stations) in a same time window
-# improvement: also consider nearby time window
-print('-----Initialize all_T. Min=1, Max=%d'%(len(sav_T)))
-all_T = {}
-for k in sav_T.keys():
-    print('dealing with:',k)
-    for t in sav_T[k]:
-        if t not in all_T:
-            all_T[t] = {'num':1, 'sta':[k]} #['num'] = 1
-        else:
-            all_T[t]['num'] += 1
-            all_T[t]['sta'].append(k)
 
-# get the detections where pass the threshold
-sav_k = [] # keys (i.e. window starttime) that pass the filter
-for k in all_T.keys():
-    if all_T[k]['num']>=N_min:
-        sav_k.append(k)
+if load_if_possible:
+    try:
+        all_T = np.load(all_T_file, allow_pickle=True).item()
+        sav_k = np.load(sav_k_file)
+        st2detc = np.load(st2detc_file,allow_pickle=True).item()
+    except:
+        all_T, sav_k, st2detc = load_from_csv(csvs)
+        np.save(all_T_file,all_T)
+        np.save(sav_k_file, sav_k)
+        np.save(st2detc_file, st2detc)
+else:
+    all_T, sav_k, st2detc = load_from_csv(csvs)
+    np.save(all_T_file,all_T)
+    np.save(sav_k_file, sav_k)
+    np.save(st2detc_file, st2detc)
 
-sav_k.sort()
 
 #=====EXAMPLE=====
 """
@@ -217,67 +243,63 @@ def core_funct_v2(travel, arrivals, res):
 
 
 # Grid seach each grid nodes-- this is slow
-OUT1 = open(fout,'w')
-OUT1.close()
+#OUT1 = open(fout,'w')
+#OUT1.close()
 
-for ik, k in enumerate(sav_k):
-    #print('Window start:',k,'; %d detections.'%(len(all_T[k]['sta'])))
-    #if ik%500==0:
-    #    print('%d of %d (%.2f %%)'%(ik,len(sav_k),ik/len(sav_k)*100))
-    #save result into list
-    sta_phase = []
-    arrival = []
-    for ista in all_T[k]['sta']:
-        #print('  ', st2detc[ista][k],ista,UTCDateTime(st2detc[ista][k])-UTCDateTime(k))
-        sta_phase.append(ista.split('.')[1]+'_'+'S') #only S here
-        arrival.append(st2detc[ista][k])
-    arrivals = sort_arrivals(sta_phase, arrival, T0=k, sort_list=Travel['sta_phase'])
-    # grid search for best location
-    err = xr.apply_ufunc(core_funct_v2, ds_var.TT, arrivals, input_core_dims=[["sta"], []], dask = 'allowed', output_dtypes=float)
-    err = np.array(err)
-    #err = grid_searching_loc(grid_loc, Travel['T'], arrivals)
-    idx = np.argmin(err) # error
-    # make some plot
-    #idx2 = np.where(grid_loc_np[:,2]==grid_loc_np[idx,2])[0]
-    #plt.scatter(grid_loc_np[idx2,0], grid_loc_np[idx2,1], c=err[idx2],cmap='jet');plt.colorbar()
-    #plt.show()
-    OUT1 = open(fout,'a') #so that you know the progress
-    OUT1.write('%s %f %f %f %f %d\n'%(k,grid_loc_np[idx,0],grid_loc_np[idx,1],grid_loc_np[idx,2],err[idx],len(all_T[k]['sta'])))
-    OUT1.close()
-    #idx = np.where(grid_loc_reduced_np[:,-1]==grid_loc_reduced_np[idx,-1])
-    #plt.scatter(grid_loc_reduced_np[idx,0], grid_loc_reduced_np[idx,1], c=err[idx]);plt.colorbar()
-    #plt.show()
-    #break
+
+def run_loop_k(sav_k_batch, all_T_batch):
+    for ik, k in enumerate(sav_k_batch):
+        print('ik=',ik)
+        sta_phase = []
+        arrival = []
+        for ista in all_T_batch[k]['sta']:
+            sta_phase.append(ista.split('.')[1]+'_'+'S') #only S here
+            arrival.append(st2detc[ista][k])
+        arrivals = sort_arrivals(sta_phase, arrival, T0=k, sort_list=Travel['sta_phase'])
+        # grid search for best location
+        err = xr.apply_ufunc(core_funct_v2, ds_var.TT, arrivals, input_core_dims=[["sta"], []], dask = 'allowed', output_dtypes=float)
+        err = np.array(err)
+        idx = np.argmin(err) # error
+        #OUT1 = open(fout,'a') #so that you know the progress
+        #OUT1.write('%s %f %f %f %f %d\n'%(k,grid_loc_np[idx,0],grid_loc_np[idx,1],grid_loc_np[idx,2],err[idx],len(all_T[k]['sta'])))
+        #OUT1.close()
 
 #OUT1.close()
 
 # Parallel processing
-#n_cores = 40
-#
-#def split_array(arr, m):
-#    n = len(arr)
-#    quotient = n // m
-#    remainder = n % m
-#    result = []
-#    start = 0
-#    for i in range(m):
-#        if i < remainder:
-#            end = start + quotient + 1
-#        else:
-#            end = start + quotient
-#        result.append(arr[start:end])
-#        start = end
-#    return result
-#
-## split the grid and Travel
-#grid_loc_batches = split_array(grid_loc, n_cores)
-#Travel_batches = []
-#for i_batch in grid_loc_batches:
-#    Travel2 = {loc:Travel['T'][loc] for loc in i_batch}
-#    Travel_batches.append(Travel2)
-#
-#assert sum([len(grid_loc_batches[ii]) for ii in range(len(grid_loc_batches))])==len(grid_loc), 'Check to size!'
-#
-#results = Parallel(n_jobs=n_cores,verbose=0)(delayed(grid_searching_loc)(grid_loc_batches[i], Travel_batches[i], arrivals) for i in range(len(grid_loc_batches))  )
-#print(results)
+n_cores = 4
+
+def split_array(arr, m):
+    n = len(arr)
+    quotient = n // m
+    remainder = n % m
+    result = []
+    start = 0
+    for i in range(m):
+        if i < remainder:
+            end = start + quotient + 1
+        else:
+            end = start + quotient
+        #result.append(arr[start:end])
+        result.append(arr[start:start+10])
+        start = end
+    return result
+
+# split the sav_k by n_cores
+sav_k_batches = split_array(sav_k, n_cores)
+# split the all_T into small batches as well
+all_T_batches = []
+for sav_k_batch in sav_k_batches:
+    tmp = {k:all_T[k] for k in sav_k_batch}
+    all_T_batches.append(tmp)
+    
+assert sum([len(sav_k_batches[ii]) for ii in range(len(sav_k_batches))]) == len(sav_k), 'Check the size!'
+
+
+from joblib import Parallel, delayed
+results = Parallel(n_jobs=n_cores,verbose=10,backend='threading')(delayed(run_loop_k)(sav_k_batches[i], all_T_batches[i]) for i in range(4)  )
+
+
+results = Parallel(n_jobs=n_cores,verbose=0)(delayed(grid_searching_loc)(grid_loc_batches[i], Travel_batches[i], arrivals) for i in range(len(grid_loc_batches))  )
+print(results)
 
