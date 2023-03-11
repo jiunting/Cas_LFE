@@ -19,8 +19,18 @@ import time
 import dask
 from dask.distributed import Client
 
+# client = Client("127.0.0.1:8786")
+#client = Client(n_workers=4, threads_per_worker=1)
+#client = Client()
+#client
+
+#print('Dashboard link:',client.dashboard_link)
 
 #------settings-------
+
+BATCH_SIZE = 10000 # size to save/compute at a time
+run_num = '001'
+
 thres = 0.1 # y>=thres to be a detection
 N_min = 3 # minumum stations have detection at the same time
 detc_dir = "../Detections_S_new/*.csv"
@@ -35,8 +45,8 @@ st2detc_file = "st2detc_%.1f_%d.npy"%(thres,N_min)
 # save the observations data so you wont read them again from the above sav_k, all_T, and st2detc
 all_arrivals_file = "all_arrivals_%.1f_%d.npy"%(thres,N_min)
 
-fout = "EQloc3_%.1f_%d_S.txt"%(thres,N_min)
-fout_npy = "res_%.1f_%d_S.npy"%(thres,N_min)
+fout = "EQloc_%s_%.1f_%d_S.txt"%(run_num,thres,N_min)
+fout_npy = "res_%s_%.1f_%d_S.npy"%(run_num,thres,N_min)
 
 csvs = glob.glob(detc_dir)
 
@@ -177,6 +187,23 @@ def make_arrivals(sav_k,all_T,st2detc):
     return np.array(all_arrivals)
 
 
+def split_dataset(data, batch_size):
+    num_batches = (data.shape[0] + batch_size - 1) // batch_size  # round up to nearest integer
+    batches = []
+    for i in range(num_batches):
+        start_idx = i * batch_size
+        end_idx = min((i + 1) * batch_size, data.shape[0])
+        batch = data[start_idx:end_idx]
+        batches.append(batch)
+    return batches
+
+
+def core_funct(tt, arr):
+    dt = arr - tt # arr.shape=(28), tt.shape=(1024800,28)
+    dT0 = np.nanmean(dt,axis=1)
+    dt = abs(dt.T - dT0) #dt.mean(axis=1)) # Calculate origin time shift, (i.e. positive if avg. arrival is later than tt), means T0 too late.
+    dt = np.nanmean(dt,axis=0) #dt.nanmean(axis=0)
+    return dt, dT0
 
 # Step 1: Load the travel time table
 Travel = np.load("./Travel.npy",allow_pickle=True)
@@ -218,7 +245,6 @@ else: #redo everything
     np.save(st2detc_file, st2detc)
     np.save(all_arrivals_file,all_arrivals)
 
-
 #=====EXAMPLE=====
 """
 # The 1th detection. Starting by this time with 15 s long, there're at least N_min detections
@@ -230,7 +256,6 @@ for ista in all_T[sav_k[0]]['sta']:
     print('  %s -> %s'%(ista,st2detc[ista][sav_k[0]]))
 """
 #=====EXAMPLE END=====
-
 
 # Step3: Prepare ds dataset
 ds = xr.Dataset(
@@ -253,20 +278,31 @@ ds = xr.Dataset(
 ds
 
 
-def core_funct(tt, arr):
-    dt = arr - tt # arr.shape=(28), tt.shape=(1024800,28)
-    dt = abs(dt.T - np.nanmean(dt,axis=1)) #dt.mean(axis=1))
-    dt = np.nanmean(dt,axis=0) #dt.nanmean(axis=0)
-    return dt
-
+#res = xr.apply_ufunc(core_funct, ds.TT, ds.arrivals, vectorize=True,
+#                   input_core_dims=[["grdidx", "sta"], ["sta"]], output_core_dims=[['grdidx']], dask="parallelized",
+#                   ).compute()
 
 res = xr.apply_ufunc(core_funct, ds.TT, ds.arrivals, vectorize=True,
-                   input_core_dims=[["grdidx", "sta"], ["sta"]], output_core_dims=[['grdidx']], dask="parallelized").compute()
+                   input_core_dims=[["grdidx", "sta"], ["sta"]], output_core_dims=[['grdidx'],['grdidx']], dask="parallelized",
+                   )
 
-res = res.to_numpy()
-np.save(fout_npy,res)
+
+idx_batches = split_dataset(np.arange(len(res[0])),BATCH_SIZE)
 
 with open(fout,'w') as OUT1:
-    for i in range(res.shape[0]):
-        idx_min = np.argmin(res[i])
-        OUT1.write('%s %f %f %f %f %d\n'%(sav_k[i],coords[idx_min,0],coords[idx_min,1],coords[idx_min,2],res[i,idx_min],len(all_T[sav_k[i]]['sta'])))
+    OUT1.write('starttime OT lon lat depth residual dt N\n')
+
+for ii,idx in enumerate(idx_batches):
+    result = dask.compute(res[0][idx],res[1][idx])
+    dT0 = result[1].to_numpy()
+    result = result[0].to_numpy()
+    #np.save("_".join([fout_npy.split(".npy")[0], "%03d.npy"%ii])  ,result)
+    with open(fout,'a') as OUT1:
+        for i in range(result.shape[0]):
+            idx_min = np.argmin(result[i])
+            st = sav_k[idx[i]]
+            OT = UTCDateTime(st) - dT0[i,idx_min]
+            OUT1.write('%s %s %f %f %.2f %.6f %.6f %d\n'%(sav_k[idx[i]],OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3],coords[idx_min,0],coords[idx_min,1],coords[idx_min,2],result[i,idx_min],dT0[i,idx_min],len(all_T[sav_k[idx[i]]]['sta'])))
+
+
+
