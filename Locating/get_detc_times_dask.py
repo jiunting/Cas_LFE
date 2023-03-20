@@ -28,7 +28,7 @@ from dask.distributed import Client
 
 #------settings-------
 
-BATCH_SIZE = 10000 # size to save/compute at a time
+BATCH_SIZE = 1000 # size to save/compute at a time
 run_num = '001'
 
 thres = 0.1 # y>=thres to be a detection
@@ -268,7 +268,7 @@ ds = xr.Dataset(
                    dict(description="Latitude", units="degree")),
                 dep=(["grdidx"], coords[:,2],
                    dict(description="depth", units="km")),
-                arrivals=(["idx_arrival", "sta"], all_arrivals[:100]) # here arrivals.shape=(N,28)
+                arrivals=(["idx_arrival", "sta"], all_arrivals) # here arrivals.shape=(N,28)
             ),
             coords=dict(
                 idx=(["grdidx"], np.arange(TT.shape[0])),
