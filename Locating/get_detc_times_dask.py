@@ -29,26 +29,39 @@ from dask.distributed import Client
 #------settings-------
 
 BATCH_SIZE = 1000 # size to save/compute at a time
-run_num = '001'
+#run_num = '001'
+run_num = '002' #also with C8 network
 
 thres = 0.1 # y>=thres to be a detection
 N_min = 3 # minumum stations have detection at the same time
 detc_dir = "../Detections_S_new/*.csv"
-load_if_possible = True # if not, re-run from .csv file anyway
+load_if_possible = False # if False, re-run from .csv file anyway
 
 
 # save the arival time results (sav_k and st2dect) so you wont load them again
-all_T_file = "all_T_%.1f_%d.npy"%(thres,N_min)
-sav_k_file = "sav_k_%.1f_%d.npy"%(thres,N_min)
-st2detc_file = "st2detc_%.1f_%d.npy"%(thres,N_min)
+#all_T_file = "all_T_%.1f_%d.npy"%(thres,N_min)
+#sav_k_file = "sav_k_%.1f_%d.npy"%(thres,N_min)
+#st2detc_file = "st2detc_%.1f_%d.npy"%(thres,N_min)
+
+# run002 with the C8 network
+all_T_file = "all2_T_%.1f_%d.npy"%(thres,N_min)
+sav_k_file = "sav2_k_%.1f_%d.npy"%(thres,N_min)
+st2detc_file = "st2detc2_%.1f_%d.npy"%(thres,N_min)
 
 # save the observations data so you wont read them again from the above sav_k, all_T, and st2detc
-all_arrivals_file = "all_arrivals_%.1f_%d.npy"%(thres,N_min)
+#all_arrivals_file = "all_arrivals_%.1f_%d.npy"%(thres,N_min)
+
+#run002 with the C8 network
+all_arrivals_file = "all_arrivals2_%.1f_%d.npy"%(thres,N_min)
 
 fout = "EQloc_%s_%.1f_%d_S.txt"%(run_num,thres,N_min)
 fout_npy = "res_%s_%.1f_%d_S.npy"%(run_num,thres,N_min)
 
 csvs = glob.glob(detc_dir)
+#----adding C8 network-----
+csvs2 = glob.glob("../Detections_S_C8_new/*.csv")
+csvs += csvs2 
+#----adding C8 network-----
 
 
 def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=None, return_all: bool=False) -> np.ndarray:
