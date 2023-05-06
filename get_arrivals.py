@@ -15,18 +15,18 @@ from obspy import UTCDateTime
 
 
 #---------------parameter setting-----------------
-N_min = 5 # at least N station detect arrival in the same 15s time window
-threshold = 0.5 # decision threshold
+N_min = 3 # at least N station detect arrival in the same 15s time window
+threshold = 0.1 # decision threshold
 
-use_P = True # add P arrival?
+use_P = False # add P arrival?
 N_min_P = 3
 threshold_P = 0.5
 
 #excluded_sta = ['PO.KLNB', ] # excluded stations
 excluded_sta = []
 
-#fileout = "./arrivals_sta%d_y%.1f.csv"%(N_min,threshold)
-fileout = "./arrivals_sta%d_y%.1f_PS.csv"%(N_min,threshold)
+fileout = "./arrivals_sta%d_y%.1f.csv"%(N_min,threshold)
+#fileout = "./arrivals_sta%d_y%.1f_PS.csv"%(N_min,threshold)
 
 #---------------parameter setting END-----------------
 
