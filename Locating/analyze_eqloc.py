@@ -63,24 +63,23 @@ def get_daily_nums(T):
     # T is the sorted timeseries of the occurrence
     T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
     T1 = T0 + datetime.timedelta(1)
-    sav_num = [] # number of events in a day
+    sav_num = [0] # number of events in a day
     sav_T = []
-    n = 1 #set each day number start from 1 to keep daily number continuous, so remember to correct it in the final
     for i in T:
-        if T0<=i<T1:
-            n += 1
-        else:
-            if n!=0:
-                sav_T.append(T0+datetime.timedelta(0.5))
-                sav_num.append(n)
-            #update T0,T1 to next day
-            T0 = T1
-            T1 = T0 + datetime.timedelta(1)
-            n = 1
+        #print('Time',i,'between?',T0,T1)
+        while True: #keep trying the current i, until find the right time window T0-T1
+            if T0<=i<T1:
+                sav_num[-1] += 1
+                break # move on to next i., use the same T0-T1
+            else:
+                #i is outside the T0-T1 window, and this `must` be because i > (T0 ~ T1), update time, use the same i.
+                sav_T.append(T0+datetime.timedelta(0.5)) # deal with sav_num[-1]'s time
+                # update time window
+                T0 = T1
+                T1 = T0 + datetime.timedelta(1)
+                sav_num.append(0) # create new counter for next time
     sav_T.append(T0+datetime.timedelta(0.5))
-    sav_num.append(n)
     sav_num = np.array(sav_num)
-    sav_num = sav_num-1 #daily number correct by 1
     return np.array(sav_T),np.array(sav_num)
 
 daily_T, daynums = get_daily_nums(T)
@@ -96,7 +95,18 @@ plt.plot(daily_T, np.cumsum(daynums))
 plt.xlabel('year')
 plt.ylabel('cumsum')
 plt.grid(True)
-plt.show()
+#plt.show()
+"""
+csv = pd.read_csv('EQ_catalog.csv') # USGS earthquake catalog
+tEQ = [UTCDateTime(t) for t in csv['time']]
+tEQ.sort()
+daily_T_EQ, daynums_EQ = get_daily_nums(tEQ)
+tEQ = np.array([utc_to_decimal_year(UTCDateTime(t)) for t in csv['time']])
+plt.subplot(2,1,1)
+plt.plot(tt,csv['mag']*(2000/4.79),'r-')
+
+
+"""
 
 
 # convert UTCDateTime to decimal year

@@ -78,6 +78,33 @@ def get_daily_nums(T):
     # T is the sorted timeseries of the occurrence
     T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
     T1 = T0 + datetime.timedelta(1)
+    sav_num = [0] # number of events in a day
+    sav_T = []
+    for i in T:
+        #print('Time',i,'between?',T0,T1)
+        while True: #keep trying the current i, until find the right time window T0-T1
+            if T0<=i<T1:
+                sav_num[-1] += 1
+                break # move on to next i., use the same T0-T1
+            else:
+                #i is outside the T0-T1 window, and this `must` be because i > (T0 ~ T1), update time, use the same i.
+                sav_T.append(T0+datetime.timedelta(0.5)) # deal with sav_num[-1]'s time
+                # update time window
+                T0 = T1
+                T1 = T0 + datetime.timedelta(1)
+                sav_num.append(0) # create new counter for next time
+    sav_T.append(T0+datetime.timedelta(0.5))
+    sav_num = np.array(sav_num)
+    return np.array(sav_T),np.array(sav_num)
+
+
+"""
+# Old function is inaccurate when T breaks more than 2 days!!
+def get_daily_nums(T):
+    # get number of events each day
+    # T is the sorted timeseries of the occurrence
+    T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
+    T1 = T0 + datetime.timedelta(1)
     sav_num = [] # number of events in a day
     sav_T = []
     n = 1 #set each day number start from 1 to keep daily number continuous, so remember to correct it in the final
@@ -97,7 +124,7 @@ def get_daily_nums(T):
     sav_num = np.array(sav_num)
     sav_num = sav_num-1 #daily number correct by 1
     return np.array(sav_T),np.array(sav_num)
-
+"""
 
 # load original detection file (from template matching)
 # load family and arrival information
@@ -175,7 +202,8 @@ ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 
 #plt.savefig('detection_tcs_all_P_y0.1.png')
 #plt.savefig('detection_tcs_all_P_y0.1.pdf')
-plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=450)
+#plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=450)
+plt.savefig('detection_tcs_all_S_new_y0.1_050523.png',dpi=450)
 #plt.savefig('detection_tcs_all_S_C8_new_y0.1_1005.png',dpi=300)
 #plt.savefig('detection_tcs_all_P_new_y0.1_0906.png',dpi=300)
 plt.close()
@@ -227,7 +255,8 @@ plt.legend(['Model','Catalog'])
 plt.xlabel('Time (year)',fontsize=14,labelpad=0)
 ax1=plt.gca()
 ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
-plt.savefig('detection_tcs_merged_S_new_y0.1_1005.png',dpi=300)
+#plt.savefig('detection_tcs_merged_S_new_y0.1_1005.png',dpi=300)
+plt.savefig('detection_tcs_merged_S_new_y0.1_050523.png',dpi=300)
 #plt.savefig('detection_tcs_merged_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 
@@ -264,7 +293,8 @@ ax2.yaxis.label.set_color('blue')
 ax2.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 plt.ylabel('Cumulative Tremor Number',fontsize=14,labelpad=0,color='b')
 plt.legend([h1[0],h2[0],h3[0]],['Model','Catalog','Tremor'])
-plt.savefig('detection_tcs_merged_cum_S_new_y0.1_1026.png',dpi=450)
+#plt.savefig('detection_tcs_merged_cum_S_new_y0.1_1026.png',dpi=450)
+plt.savefig('detection_tcs_merged_cum_S_new_y0.1_050523.png',dpi=450)
 #plt.savefig('detection_tcs_merged_cum_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 

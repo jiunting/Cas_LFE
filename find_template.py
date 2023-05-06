@@ -260,6 +260,32 @@ def get_daily_nums(T):
     # T is the sorted timeseries of the occurrence
     T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
     T1 = T0 + datetime.timedelta(1)
+    sav_num = [0] # number of events in a day
+    sav_T = []
+    for i in T:
+        #print('Time',i,'between?',T0,T1)
+        while True: #keep trying the current i, until find the right time window T0-T1
+            if T0<=i<T1:
+                sav_num[-1] += 1
+                break # move on to next i., use the same T0-T1
+            else:
+                #i is outside the T0-T1 window, and this `must` be because i > (T0 ~ T1), update time, use the same i.
+                sav_T.append(T0+datetime.timedelta(0.5)) # deal with sav_num[-1]'s time
+                # update time window
+                T0 = T1
+                T1 = T0 + datetime.timedelta(1)
+                sav_num.append(0) # create new counter for next time
+    sav_T.append(T0+datetime.timedelta(0.5))
+    sav_num = np.array(sav_num)
+    return np.array(sav_T),np.array(sav_num)
+
+"""
+#The old function. Inaccurate when T is not continuous! (break>2 days)
+def get_daily_nums(T):
+    # get number of events each day
+    # T is the sorted timeseries of the occurrence
+    T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
+    T1 = T0 + datetime.timedelta(1)
     sav_num = [] # number of events in a day
     sav_T = []
     n = 1 #set each day number start from 1 to keep daily number continuous, so remember to correct it in the final
@@ -279,6 +305,7 @@ def get_daily_nums(T):
     sav_num = np.array(sav_num)
     sav_num = sav_num-1 #daily number correct by 1
     return np.array(sav_T),np.array(sav_num)
+"""
 
 def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=None) -> np.ndarray:
     """
