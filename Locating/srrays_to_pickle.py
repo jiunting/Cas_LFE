@@ -88,6 +88,7 @@ def xy2lonlat(refsta):
         lat.append(ilats)
     return np.array(lon), np.array(lat)
     
+C8 = ['LCBC', 'SHVB', 'GLBC','PHYB','JRBC','SHDB','MGCB','TWBB','SOKB','BPCB']
 
 # Save all the travel times (from grid nodes to stations)
 Travel = {'T':{},'sta_phase':[]} #travel time from which grid to what station/phase

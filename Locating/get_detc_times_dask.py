@@ -314,7 +314,8 @@ for ii,idx in enumerate(idx_batches):
         for i in range(result.shape[0]):
             idx_min = np.argmin(result[i])
             st = sav_k[idx[i]]
-            OT = UTCDateTime(st) - dT0[i,idx_min]
+            #OT = UTCDateTime(st) - dT0[i,idx_min]
+            OT = UTCDateTime(st) + dT0[i,idx_min] # modify from - to +, needs to verify!
             OUT1.write('%s %s %f %f %.2f %.6f %.6f %d\n'%(sav_k[idx[i]],OT.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3],coords[idx_min,0],coords[idx_min,1],coords[idx_min,2],result[i,idx_min],dT0[i,idx_min],len(all_T[sav_k[idx[i]]]['sta'])))
 
 
