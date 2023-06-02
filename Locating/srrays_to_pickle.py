@@ -103,13 +103,13 @@ for ip,phase in enumerate(['P','S']):
         if i==0 and ip==0:
             lon, lat = xy2lonlat(refsta) # only run once since all the grid nodes (lon/lat/dep) are the same
         #lon.shape=lat.shape=(140,120)
-        #for ilat in range(lat.shape[0]): #0~139
-        for ilat in range(lat.shape[0])[::5]: #0~139
-            #for ilon in range(lon.shape[1]): #0~119
-            for ilon in range(lon.shape[1])[::5]: #0~119
-                #for idep,dep in enumerate(refsta['srRays']['zg']):
+        for ilat in range(lat.shape[0]): #0~139
+        #for ilat in range(lat.shape[0])[::5]: #0~139
+            for ilon in range(lon.shape[1]): #0~119
+            #for ilon in range(lon.shape[1])[::5]: #0~119
+                for idep,dep in enumerate(refsta['srRays']['zg']):
                 #for idep,dep in enumerate(refsta['srRays']['zg'][::5]):
-                for idep,dep in enumerate(refsta['srRays']['zg'][25::5]):
+                #for idep,dep in enumerate(refsta['srRays']['zg'][25::5]):
                     #print(lon[ilat,ilon],lat[ilat,ilon],dep,'Travel=%f'%(reftts[ilon,ilat,idep])) #note the shape are different!
                     if (lon[ilat,ilon],lat[ilat,ilon],dep) in Travel['T']:
                         Travel['T'][(lon[ilat,ilon],lat[ilat,ilon],dep)].append(reftts[ilon,ilat,idep]) #append a time at this grid node
@@ -123,12 +123,42 @@ for ig in Travel['T'].keys():
     Travel['T'][ig] = np.array(Travel['T'][ig])
 
 # Finally save the travel time
-#np.save('Travel.npy',Travel)
+np.save('Travel.npy',Travel)
 #np.save('Travel_reduced.npy',Travel)
-np.save('Travel_reduced_25km.npy',Travel)
+#np.save('Travel_reduced_25km.npy',Travel)
+
+# -----------Filter the Travel by slab geometry--------------
+coords = np.array([coord for coord in Travel['T'].keys()]) # all the coords
+
+slab = np.genfromtxt('cas_slab_rmNan.xyz')
+idx=np.where((slab[:,0]>=-124.5) & (slab[:,0]<=-123) & (slab[:,1]>=48.1) & (slab[:,1]<=49.3))[0]
+slab2 = slab[idx]
+# make a plot to see the geometry
+ax = plt.figure().add_subplot(projection='3d')
+ax.plot(slab2[:,0],slab2[:,1],-slab2[:,2],'.')
+plt.show()
+
+sav_idx = []
+for i in range(slab2.shape[0]):
+    d = ((coords[:,0]-slab2[i,0])**2 + (coords[:,1]-slab2[i,1])**2 + (-coords[:,2]-slab2[i,2])**2) ** 0.5
+    sav_idx.append(np.argmin(d))
+    
+coords2 = coords[sav_idx]
+# plot and check
+ax = plt.figure().add_subplot(projection='3d')
+ax.plot(slab2[:,0],slab2[:,1],-slab2[:,2],'k.', label='slab')
+ax.plot(coords2[:,0],coords2[:,1],coords2[:,2],'r.',label='closest node to slab')
+plt.legend()
+plt.show()
+
+Travel2 = {'sta_phase':Travel['sta_phase']}
+Travel2['T'] = {tuple(c):Travel['T'][tuple(c)] for c in coords2}
+
+# save the travel time
+np.save('Travel_slab.npy',Travel2)
 
 
-
+# -----------Filter the Travel by slab geometry END--------------
 
 # END here
 

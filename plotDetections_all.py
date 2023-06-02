@@ -148,7 +148,8 @@ cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
 tremor = pd.read_csv("tremor_events-2009-08-06T00_00_00-2014-12-31T23_59_59.csv")
 tremor = tremor[(tremor['lon']>=-124.5) & (tremor['lon']<=-123) & (tremor['lat']>=48.1) & (tremor['lat']<=49.3)]
 tremor_t = [UTCDateTime(tt).datetime for tt in tremor['starttime']]
-trem_time,trem_daynums = get_daily_nums(sorted(tremor_t))
+trem_time,trem_daynums = get_daily_nums(sorted(tremor_t),15)
+trem_time = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in trem_time])
 
 # load model detection .csv file
 #csvs = glob.glob('./Detections_S_new/*.csv')
