@@ -95,7 +95,8 @@ def ML2M0(ML):
 
 # LFE Locating result file
 #fname = "./EQloc_0.2_5_S.txt"
-fname = "./EQloc_001_0.1_3_S.txt"
+#fname = "./EQloc_001_0.1_3_S.txt"
+fname = "./EQloc_005_0.3_3_S.txt" # slab geometry
 #fname = "./EQloc_002_0.1_3_S.txt" # locating with C8 stations
 
 window_len = 10 # group N days together. Set to 1 means to calculate daily number.
@@ -368,7 +369,7 @@ for i_t,t in enumerate(LFE_start):
     lon_bf, lat_bf = np.mean(A.iloc[idx_bf]['lon']), np.mean(A.iloc[idx_bf]['lat'])
     lon_tremor_bf, lat_tremor_bf = np.mean(tremor.iloc[idx_tremor_bf]['lon']), np.mean(tremor.iloc[idx_tremor_af]['lat'])
     # make moving average
-    window = 10
+    window = 5
     lon_avg = moving_average(np.array(A.iloc[idx_af]['lon']), window)
     lat_avg = moving_average(np.array(A.iloc[idx_af]['lat']), window)
     # same thing for tremor
