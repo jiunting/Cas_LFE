@@ -75,7 +75,7 @@ def get_daily_nums(T, dt=1, T_st: str = None, return_idx = False):
                 break # move on to next i., use the same T0-T1
             else:
                 #i is outside the T0-T1 window, and this `must` be because i > (T0 ~ T1), update time, use the same i.
-                sav_T.append(T0+datetime.timedelta(0.5)) # deal with sav_num[-1]'s time
+                sav_T.append(T0+datetime.timedelta(dt*0.5)) # deal with sav_num[-1]'s time
                 # update time window
                 T0 = T1
                 T1 = T0 + datetime.timedelta(dt)

@@ -276,28 +276,41 @@ search_params: SearchParams = {
 '''
 
 
-def get_daily_nums(T):
+def get_daily_nums(T, dt=1, T_st: str = None, return_idx = False):
     # get number of events each day
     # T is the sorted timeseries of the occurrence
-    T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
-    T1 = T0 + datetime.timedelta(1)
+    # dt is the time window for calculating number of events
+    # T_st is the time to start with: None or str, If None, use the first date as T0
+    # return_idx is to also return the index of each time window
+    if T_st != None:
+        assert type(T_st)==str, "T_st is str in YYYYMMDD e.g. 20100302"
+        T0 = datetime.datetime(int(T_st[:4]), int(T_st[4:6]), int(T_st[6:8]))
+        T1 = T0 + datetime.timedelta(dt)
+    else:
+        T0 = datetime.datetime(T[0].year,T[0].month,T[0].day)
+        T1 = T0 + datetime.timedelta(dt)
     sav_num = [0] # number of events in a day
     sav_T = []
-    for i in T:
+    sav_idx = [[]]
+    for ii,i in enumerate(T):
         #print('Time',i,'between?',T0,T1)
         while True: #keep trying the current i, until find the right time window T0-T1
             if T0<=i<T1:
                 sav_num[-1] += 1
+                sav_idx[-1].append(ii)
                 break # move on to next i., use the same T0-T1
             else:
                 #i is outside the T0-T1 window, and this `must` be because i > (T0 ~ T1), update time, use the same i.
-                sav_T.append(T0+datetime.timedelta(0.5)) # deal with sav_num[-1]'s time
+                sav_T.append(T0+datetime.timedelta(dt*0.5)) # deal with sav_num[-1]'s time
                 # update time window
                 T0 = T1
-                T1 = T0 + datetime.timedelta(1)
+                T1 = T0 + datetime.timedelta(dt)
                 sav_num.append(0) # create new counter for next time
-    sav_T.append(T0+datetime.timedelta(0.5))
+                sav_idx.append([])
+    sav_T.append(T0+datetime.timedelta(dt*0.5))
     sav_num = np.array(sav_num)
+    if return_idx:
+        return np.array(sav_T),np.array(sav_num), sav_idx
     return np.array(sav_T),np.array(sav_num)
 
 
