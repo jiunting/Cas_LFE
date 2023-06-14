@@ -30,7 +30,12 @@ from dask.distributed import Client
 
 BATCH_SIZE = 1000 # size to save/compute at a time
 #run_num = '001'
-run_num = '002' #also with C8 network
+#run_num = '002' #also with C8 network
+#run_num = '003' #with C8, slab geometry, thres=0.1
+#run_num = '004' #with C8, slab geometry, thres=0.2
+#run_num = '005' #with C8, slab geometry, thres=0.3
+
+run_num = '006' #back to without C8, slab geometry, thres=0.1
 
 thres = 0.1 # y>=thres to be a detection
 N_min = 3 # minumum stations have detection at the same time
@@ -39,28 +44,28 @@ load_if_possible = False # if False, re-run from .csv file anyway
 
 
 # save the arival time results (sav_k and st2dect) so you wont load them again
-#all_T_file = "all_T_%.1f_%d.npy"%(thres,N_min)
-#sav_k_file = "sav_k_%.1f_%d.npy"%(thres,N_min)
-#st2detc_file = "st2detc_%.1f_%d.npy"%(thres,N_min)
+all_T_file = "all_T_%.1f_%d.npy"%(thres,N_min)
+sav_k_file = "sav_k_%.1f_%d.npy"%(thres,N_min)
+st2detc_file = "st2detc_%.1f_%d.npy"%(thres,N_min)
 
 # run002 with the C8 network
-all_T_file = "all2_T_%.1f_%d.npy"%(thres,N_min)
-sav_k_file = "sav2_k_%.1f_%d.npy"%(thres,N_min)
-st2detc_file = "st2detc2_%.1f_%d.npy"%(thres,N_min)
+#all_T_file = "all2_T_%.1f_%d.npy"%(thres,N_min)
+#sav_k_file = "sav2_k_%.1f_%d.npy"%(thres,N_min)
+#st2detc_file = "st2detc2_%.1f_%d.npy"%(thres,N_min)
 
 # save the observations data so you wont read them again from the above sav_k, all_T, and st2detc
-#all_arrivals_file = "all_arrivals_%.1f_%d.npy"%(thres,N_min)
+all_arrivals_file = "all_arrivals_%.1f_%d.npy"%(thres,N_min)
 
 #run002 with the C8 network
-all_arrivals_file = "all_arrivals2_%.1f_%d.npy"%(thres,N_min)
+#all_arrivals_file = "all_arrivals2_%.1f_%d.npy"%(thres,N_min)
 
 fout = "EQloc_%s_%.1f_%d_S.txt"%(run_num,thres,N_min)
 fout_npy = "res_%s_%.1f_%d_S.npy"%(run_num,thres,N_min)
 
 csvs = glob.glob(detc_dir)
 #----adding C8 network-----
-csvs2 = glob.glob("../Detections_S_C8_new/*.csv")
-csvs += csvs2 
+#csvs2 = glob.glob("../Detections_S_C8_new/*.csv")
+#csvs += csvs2 
 #----adding C8 network-----
 
 
