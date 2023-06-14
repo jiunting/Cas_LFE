@@ -40,7 +40,7 @@ run_num = '006' #back to without C8, slab geometry, thres=0.1
 thres = 0.1 # y>=thres to be a detection
 N_min = 3 # minumum stations have detection at the same time
 detc_dir = "../Detections_S_new/*.csv"
-load_if_possible = False # if False, re-run from .csv file anyway
+load_if_possible = True # if False, re-run from .csv file anyway
 
 
 # save the arival time results (sav_k and st2dect) so you wont load them again
@@ -224,7 +224,8 @@ def core_funct(tt, arr):
     return dt, dT0
 
 # Step 1: Load the travel time table
-Travel = np.load("./Travel.npy",allow_pickle=True)
+#Travel = np.load("./Travel.npy",allow_pickle=True)
+Travel = np.load("./Travel_slab_C8.npy",allow_pickle=True)
 Travel = Travel.item()
 coords = np.array([coord for coord in Travel['T'].keys()])
 TT = np.array([Travel['T'][coord] for coord in Travel['T'].keys()])
