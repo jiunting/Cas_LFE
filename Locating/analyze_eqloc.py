@@ -92,6 +92,50 @@ def ML2M0(ML):
     # convert local magnitude to moment
     return 10**(1.5*ML+9.0)
 
+def get_contour2D(x,y,z,sampl=0.01):
+    from scipy.interpolate import griddata,interp2d
+    #plt.scatter() makes sense, but it is not the plt.contour format
+    #the function return the X,Y,Z in plt.contour format
+    x=np.array(x)
+    y=np.array(y)
+    z=np.array(z)
+    #f = interp2d(x, y, z, kind='cubic') #the interpolate function
+    xx=np.arange(x.min(),x.max(),sampl)
+    yy=np.arange(y.min(),y.max(),sampl)
+    X,Y=np.meshgrid(xx,yy)
+    Z=griddata((x,y),z,(X,Y),method='linear',fill_value=0)
+    return X,Y,Z
+
+#from mpl_toolkits.basemap import Basemap
+#m = Basemap(projection='merc',llcrnrlat=48.1-1,urcrnrlat=49.3+1,llcrnrlon=-124.5-1,urcrnrlon=-123+1,lat_ts=48.7,resolution='f')
+#m.drawcoastlines()
+def plot_map():
+    plt.figure(figsize=(6.2,8.2))
+    IN1 = open('Vancouver_coast_nation.txt','r')
+    curr_line = []
+    for line in IN1.readlines():
+        if line[0]=='>':
+            if len(curr_line)!=0:
+                curr_line = np.array(curr_line)
+                plt.plot(curr_line[:,0],curr_line[:,1],'--',color=[0.5,0.5,0.5],lw=1.)
+                curr_line = []
+            continue
+        elems = line.split()
+        curr_line.append([float(elems[0]), float(elems[1])])
+    IN1.close()
+    IN1 = open('Vancouver_coast.txt','r')
+    curr_line = []
+    for line in IN1.readlines():
+        if line[0]=='>':
+            if len(curr_line)!=0:
+                curr_line = np.array(curr_line)
+                plt.plot(curr_line[:,0],curr_line[:,1],'-',color=[0.7,0.7,0.7],lw=0.6)
+                curr_line = []
+            continue
+        elems = line.split()
+        curr_line.append([float(elems[0]), float(elems[1])])
+    IN1.close()
+
 
 # LFE Locating result file
 #fname = "./EQloc_0.2_5_S.txt"
@@ -110,9 +154,12 @@ EQ_file = "./EQ_catalog_CN.txt" # earthquake catalog from CN, more EQ than NEIC
 # load LFE data and do filter
 A = pd.read_csv(fname,sep='\s+',header=0)
 
-# residual filtering based on number of stations
+# ----------residual filtering based on number of stations----------
+# IDEA: Different number of station used have different threshold, smaller stations are easier to fit.
+# Get the misfit distribution for each stations i.e. use 3 stations, 5 stations or 8 stations etc.
+# Find the first N% of sorted misfit
 #first_N = 0.25 # a float from 0-1 select the residual threshold based on each groups
-first_N = 0.99 # a float from 0-1 select the residual threshold based on each groups
+first_N = 0.10 # a float from 0-1 select the residual threshold based on each groups
 sav_thres = {}
 for N in np.unique(A['N']):
     tmp_residual = list(A[A['N']==N]['residual'])
@@ -122,6 +169,7 @@ for N in np.unique(A['N']):
 thres_25 = np.array([sav_thres[N] for N in A['N']])
 A['thres_25'] = thres_25
 A = A[A['residual']<=A['thres_25']]
+# ----------------------END of filter------------------------------------
 
 #A['T'] = pd.to_datetime(A['T'],format='%Y-%m-%dT%H:%M:%S.%fZ')
 T = [UTCDateTime(t) for t in A['OT']]
@@ -220,54 +268,6 @@ plt.xlim([-124.5,-123])
 plt.ylim([48.1,49.3])
 plt.show()
 
-
-def get_contour2D(x,y,z,sampl=0.01):
-    from scipy.interpolate import griddata,interp2d
-    #plt.scatter() makes sense, but it is not the plt.contour format
-    #the function return the X,Y,Z in plt.contour format
-    x=np.array(x)
-    y=np.array(y)
-    z=np.array(z)
-    #f = interp2d(x, y, z, kind='cubic') #the interpolate function
-    xx=np.arange(x.min(),x.max(),sampl)
-    yy=np.arange(y.min(),y.max(),sampl)
-    X,Y=np.meshgrid(xx,yy)
-    Z=griddata((x,y),z,(X,Y),method='linear',fill_value=0)
-    return X,Y,Z
-    
-
-#from mpl_toolkits.basemap import Basemap
-#m = Basemap(projection='merc',llcrnrlat=48.1-1,urcrnrlat=49.3+1,llcrnrlon=-124.5-1,urcrnrlon=-123+1,lat_ts=48.7,resolution='f')
-#m.drawcoastlines()
-def plot_map():
-    plt.figure(figsize=(6.2,8.2))
-    IN1 = open('Vancouver_coast_nation.txt','r')
-    curr_line = []
-    for line in IN1.readlines():
-        if line[0]=='>':
-            if len(curr_line)!=0:
-                curr_line = np.array(curr_line)
-                plt.plot(curr_line[:,0],curr_line[:,1],'--',color=[0.5,0.5,0.5],lw=1.)
-                curr_line = []
-            continue
-        elems = line.split()
-        curr_line.append([float(elems[0]), float(elems[1])])
-    IN1.close()
-    IN1 = open('Vancouver_coast.txt','r')
-    curr_line = []
-    for line in IN1.readlines():
-        if line[0]=='>':
-            if len(curr_line)!=0:
-                curr_line = np.array(curr_line)
-                plt.plot(curr_line[:,0],curr_line[:,1],'-',color=[0.7,0.7,0.7],lw=0.6)
-                curr_line = []
-            continue
-        elems = line.split()
-        curr_line.append([float(elems[0]), float(elems[1])])
-    IN1.close()
-
-
-
 # generate contour or pcolor data to plot on map
 x_range = (-124.5,-123)
 y_range = (48.1,49.3)
@@ -296,27 +296,48 @@ for i in ax1.get_yticklines():
     i.set_visible(True)
 
 plt.colorbar()
-#plt.gca().set_aspect(1.4)
-#plt.gca().invert_yaxis()
 plt.show()
 
 
+#----Plot moving avg of lon, lat, depth corrdinates time series------
 plt.figure()
-plt.subplot(2,1,1)
-#plt.plot(decT,A['lon']-np.mean(lon_avg),'k',lw=0.2)
-plt.plot(T_avg,lon_avg-np.mean(lon_avg),'r',label='Lon mov_avg(%d)'%(window))
-plt.plot(T_avg,lat_avg-np.mean(lat_avg),'b',label='Lat mov_avg(%d)'%(window))
-plt.plot(T_avg,(dep_avg-np.mean(dep_avg))*0.1,'k',label='Dep mov_avg(%d)'%(window))
-plt.xlim([2005, 2014.5])
-plt.legend()
-plt.ylabel('$\Delta$ Lon')
+plt.subplot(3,1,1)
+plt.plot(T_avg,lon_avg,'r')
+#plt.plot(T_avg,lat_avg-np.mean(lat_avg),'b',label='Lat mov_avg(%d)'%(window))
+#plt.plot(T_avg,(dep_avg-np.mean(dep_avg))*0.1,'k',label='Dep mov_avg(%d)'%(window))
+plt.ylabel('Lon')
 plt.grid(True)
-plt.subplot(2,1,2)
-plt.plot(window_T_dec,np.cumsum(daynums),'r')
+ax1=plt.gca()
+ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
+ax2.set_xlim(ax1.get_xlim())
+ax2.plot(window_T_LFE_dec,window_nums_LFE,'k')
 plt.xlim([2005, 2014.5])
-plt.ylabel('Cumulative num')
+#plt.ylabel('$\Delta$ Lon')
+
+plt.subplot(3,1,2)
+plt.plot(T_avg,lat_avg,'r')
+plt.ylabel('Lat')
 plt.grid(True)
+ax1=plt.gca()
+ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
+ax2.set_xlim(ax1.get_xlim())
+ax2.plot(window_T_LFE_dec,window_nums_LFE,'k')
+plt.xlim([2005, 2014.5])
+#plt.ylabel('$\Delta$ Lon')
+
+plt.subplot(3,1,3)
+plt.plot(T_avg,dep_avg,'r')
+plt.ylabel('Dep')
+plt.grid(True)
+ax1=plt.gca()
+ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
+ax2.set_xlim(ax1.get_xlim())
+ax2.plot(window_T_LFE_dec,window_nums_LFE,'k')
+plt.xlim([2005, 2014.5])
+#plt.ylabel('$\Delta$ Lon')
 plt.show()
+#----Plot moving avg of lon, lat, depth corrdinates time series END------
+
 
 
 # load daily LFEs detections from file using N=3, y>0.1, so it has more
