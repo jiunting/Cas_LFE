@@ -6,7 +6,7 @@ matplotlib.use('pdf') #instead using interactive backend
 import matplotlib.pyplot as plt
 import h5py
 import pandas as pd
-import unet_tools
+# import unet_tools
 import glob
 from obspy import UTCDateTime
 import datetime
@@ -110,6 +110,12 @@ def get_daily_nums(T, dt=1, T_st: str = None, return_idx = False):
         return np.array(sav_T),np.array(sav_num), sav_idx
     return np.array(sav_T),np.array(sav_num)
 
+def utc_to_decimal_year(utc):
+    """
+    Converts an ObsPy UTCDateTime object to decimal year.
+    """
+    total_t = UTCDateTime(utc.year+1, 1, 1) - UTCDateTime(utc.year, 1, 1)
+    return utc.year + (utc - UTCDateTime(utc.year, 1, 1)) / total_t
 
 """
 # Old function is inaccurate when T breaks more than 2 days!!
@@ -141,9 +147,9 @@ def get_daily_nums(T):
 
 # load original detection file (from template matching)
 # load family and arrival information
-EQinfo = np.load('sav_family_phases.npy',allow_pickle=True) #Note! detection file has a shift for each family
+EQinfo = np.load('./Data/sav_family_phases.npy',allow_pickle=True) #Note! detection file has a shift for each family
 EQinfo = EQinfo.item()
-detcFile = 'total_mag_detect_0000_cull_NEW.txt' #LFE event detection file
+detcFile = './Data/total_mag_detect_0000_cull_NEW.txt' #LFE event detection file
 sav_OT_template = []
 with open(detcFile,'r') as IN1:
     for line in IN1.readlines():
@@ -162,13 +168,13 @@ tremor = pd.read_csv("tremor_events-2009-08-06T00_00_00-2014-12-31T23_59_59.csv"
 tremor = tremor[(tremor['lon']>=-124.5) & (tremor['lon']<=-123) & (tremor['lat']>=48.1) & (tremor['lat']<=49.3)]
 tremor_t = [UTCDateTime(tt).datetime for tt in tremor['starttime']]
 trem_time,trem_daynums = get_daily_nums(sorted(tremor_t),15)
-trem_time = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in trem_time])
+# trem_time = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in trem_time])
 
 # load model detection .csv file
 #csvs = glob.glob('./Detections_S_new/*.csv')
 #csvs = glob.glob('./Detections_P/*.csv')
 csvs = glob.glob('./Detections_S_new/*.csv')
-#csvs = glob.glob('./Detections_S_C8_new/*.csv')
+csvs = glob.glob('./Detections_S_C8_new/*.csv')
 #csvs = glob.glob('./Detections_P_new/*.csv')
 
 thres = 0.1 #plot everything >= thres
@@ -217,13 +223,17 @@ ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 #plt.savefig('detection_tcs_all_P_y0.1.png')
 #plt.savefig('detection_tcs_all_P_y0.1.pdf')
 #plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=450)
-plt.savefig('detection_tcs_all_S_new_y0.1_050523.png',dpi=450)
+# plt.savefig('detection_tcs_all_S_new_y0.1_050523.png',dpi=450)
+# plt.savefig('detection_tcs_all_S_new_y0.1_071023.png',dpi=450)
+plt.savefig('detection_tcs_all_S_C8_new_y0.1_071023.png',dpi=450)
+
 #plt.savefig('detection_tcs_all_S_C8_new_y0.1_1005.png',dpi=300)
 #plt.savefig('detection_tcs_all_P_new_y0.1_0906.png',dpi=300)
 plt.close()
 
 
-
+import sys
+sys.exit()
 
 # 2. plot merged detection timeseries (copy from find_template.py)
 #=====get the number of detections in the same starttime window=====
@@ -270,7 +280,9 @@ plt.xlabel('Time (year)',fontsize=14,labelpad=0)
 ax1=plt.gca()
 ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 #plt.savefig('detection_tcs_merged_S_new_y0.1_1005.png',dpi=300)
-plt.savefig('detection_tcs_merged_S_new_y0.1_050523.png',dpi=300)
+# plt.savefig('detection_tcs_merged_S_new_y0.1_050523.png',dpi=300)
+# plt.savefig('detection_tcs_merged_S_new_y0.1_050523.png',dpi=300)
+plt.savefig('detection_tcs_merged_S_new_y0.1_071023.png',dpi=300)
 #plt.savefig('detection_tcs_merged_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 
@@ -308,7 +320,8 @@ ax2.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 plt.ylabel('Cumulative Tremor Number',fontsize=14,labelpad=0,color='b')
 plt.legend([h1[0],h2[0],h3[0]],['Model','Catalog','Tremor'])
 #plt.savefig('detection_tcs_merged_cum_S_new_y0.1_1026.png',dpi=450)
-plt.savefig('detection_tcs_merged_cum_S_new_y0.1_050523.png',dpi=450)
+# plt.savefig('detection_tcs_merged_cum_S_new_y0.1_050523.png',dpi=450)
+plt.savefig('detection_tcs_merged_cum_S_new_y0.1_071023.png',dpi=450)
 #plt.savefig('detection_tcs_merged_cum_S_C8_new_y0.1_1005.png',dpi=300)
 plt.close()
 

@@ -140,10 +140,30 @@ def plot_map():
 # LFE Locating result file
 #fname = "./EQloc_0.2_5_S.txt"
 #fname = "./EQloc_001_0.1_3_S.txt"
-fname = "./EQloc_005_0.3_3_S.txt" # slab geometry
+#fname = "./EQloc_005_0.3_3_S.txt" # slab geometry with C8
+fname = "./EQloc_006_0.1_3_S.txt" # slab geometry without C8
+fname = "./EQloc_008_0.3_3_S.txt"
 #fname = "./EQloc_002_0.1_3_S.txt" # locating with C8 stations
 
 window_len = 10 # group N days together. Set to 1 means to calculate daily number.
+
+# Original LFE catalog (template matching)
+EQinfo = np.load('../Data/sav_family_phases.npy',allow_pickle=True) #Note! detection file has a shift for each family
+EQinfo = EQinfo.item()
+detcFile = '../Data/total_mag_detect_0000_cull_NEW.txt' #LFE event detection file
+T_template = []
+with open(detcFile,'r') as IN1:
+    for line in IN1.readlines():
+        line = line.strip()
+        ID = line.split()[0] #family ID
+        OT = UTCDateTime('20'+line.split()[1]) #YYMMDD
+        HH = int(line.split()[2])*3600
+        SS = float(line.split()[3])
+        OT = OT + HH + SS + EQinfo[ID]['catShift'] #detected origin time
+        T_template.append(OT)
+
+T_template.sort()
+T_template_dec = np.array([utc_to_decimal_year(t) for t in T_template])
 
 # Tremor catlog
 tremor_file = "../tremor_events-2009-08-06T00_00_00-2014-12-31T23_59_59.csv"
@@ -159,7 +179,7 @@ A = pd.read_csv(fname,sep='\s+',header=0)
 # Get the misfit distribution for each stations i.e. use 3 stations, 5 stations or 8 stations etc.
 # Find the first N% of sorted misfit
 #first_N = 0.25 # a float from 0-1 select the residual threshold based on each groups
-first_N = 0.10 # a float from 0-1 select the residual threshold based on each groups
+first_N = 0.90 # a float from 0-1 select the residual threshold based on each groups
 sav_thres = {}
 for N in np.unique(A['N']):
     tmp_residual = list(A[A['N']==N]['residual'])
@@ -192,16 +212,32 @@ window_T_LFE, window_nums_LFE,sav_idx_LFE = get_daily_nums(T, window_len, '20030
 # convert datetime to decimal year for plotting
 window_T_LFE_dec = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in window_T_LFE])
 
-# Same process with tremor
+# Same process for original catalog
+window_T_template, window_nums_template, sav_idx_template = get_daily_nums(T_template, window_len, '20030101',True) # for tremor
+window_T_template_dec = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in window_T_template])
+
+
+# Same process for tremor
 window_T_tremor, window_nums_tremor, sav_idx_tremor = get_daily_nums(T_tremor, window_len, '20030101',True) # for tremor
 window_T_tremor_dec = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in window_T_tremor])
 
 
 plt.subplot(2,1,1)
-plt.plot(window_T_LFE_dec, window_nums_LFE,'b')
+h1 = plt.plot(window_T_LFE_dec, window_nums_LFE,color=[0,0,1],lw=3,label='LFE')
 plt.xlabel('year')
-plt.ylabel('daily num')
-plt.grid(axis='y')
+plt.ylabel('LFEs / %d days'%(window_len))
+plt.grid(axis='x')
+ax1 = plt.gca()
+ax1.tick_params(pad=0.5,length=0.5,size=0.5,labelsize=10)
+ax1.tick_params(axis='y', colors=[0,0,1])
+ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
+ax2.set_xlim(ax1.get_xlim())
+h2 = ax2.plot(window_T_tremor_dec, window_nums_tremor,'--',color=[1,0,0],lw=0.8,label='Tremor')
+ax2.tick_params(pad=0.5,length=0.5,size=0.5,labelsize=10)
+ax2.tick_params(axis='y', colors=[1,0,0])
+plt.ylabel('Tremors / %d days'%(window_len))
+plt.grid(False)
+plt.legend([h1[0],h2[0]],['LFE', 'Tremor'])
 plt.subplot(2,1,2)
 plt.plot(T_dec, np.cumsum(np.ones(len(T_dec))),'k')
 plt.plot(window_T_LFE_dec, np.cumsum(window_nums_LFE)) # the same thing, for debug purpose
@@ -228,7 +264,7 @@ plt.plot([tEQ, tEQ], [np.zeros(len(csv)),csv['mag']*(0.7*daynums.max()/csv['mag'
 """
 
 EQ = pd.read_csv(EQ_file, sep='|') # CN earthquake catalog
-EQ = EQ[(EQ['Depth/km']>10) & (EQ['Time']<'2015')]
+EQ = EQ[(EQ['Depth/km']>20) & (EQ['Depth/km']<60) & (EQ['Time']<'2015')]
 T_EQ = np.array([UTCDateTime(t) for t in EQ['Time']])
 sor_idx = np.argsort(T_EQ)
 T_EQ = T_EQ[sor_idx]
@@ -245,7 +281,9 @@ plt.subplot(2,1,2)
 ax1 = plt.gca()
 ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
 ax2.set_xlim(ax1.get_xlim())
-ax2.plot(window_T_EQ_dec, np.cumsum(window_M0),'r')
+#ax2.plot(window_T_EQ_dec, np.cumsum(window_M0),'r') # cumulated M0
+ax2.plot(T_EQ_dec, mag,'r')
+#ax2.plot(window_T_EQ_dec, np.cumsum(np.ones(len(window_T_EQ_dec))),'r') # cumulated number
 ax2.set_ylabel('accumulated M0')
 #plt.plot(window_T_EQ_dec, window_nums_EQ*(0.8*window_nums_LFE.max()/window_nums_EQ.max()), 'm')
 #plt.plot([T_EQ_dec,T_EQ_dec], [np.zeros(len(T_EQ)),mag*(0.7*window_nums_LFE.max()/mag.max())],'r-',lw=0.3,markersize=0.5)
@@ -379,18 +417,18 @@ for i_t,t in enumerate(LFE_start):
     #idx_bf = np.where( (T_dec<(t-0.01/365.25)) & (T_dec>(t-3/365.25)) )[0]
     #idx_af = np.where( (T_dec>(t+0.01/365.25)) & (T_dec<(t+30/365.25)) )[0]
     # method 3. similar to 2, find idx_bf, idx_ad by time. idx_bf is the initiation of SSE
-    idx_bf = np.where( T_dec>t )[0][:50] # use the first 50 LFE locations
-    idx_af = np.where( (T_dec>t) & (T_dec<(t+7/365.25)))[0][50:] # skip the first 50 points
+    idx_bf = np.where( T_dec>t )[0][:100] # use the first 50 LFE locations
+    idx_af = np.where( (T_dec>t) & (T_dec<(t+7/365.25)))[0][100:] # skip the first 50 points
     # repeat the same thing for tremor
-    idx_tremor_bf = np.where( T_tremor_dec>t )[0][:50]
-    idx_tremor_af = np.where( (T_tremor_dec>t) & (T_tremor_dec<(t+7/365.25)))[0][50:]
+    idx_tremor_bf = np.where( T_tremor_dec>t )[0][:100]
+    idx_tremor_af = np.where( (T_tremor_dec>t) & (T_tremor_dec<(t+7/365.25)))[0][100:]
     # see if any EQ within the time. Seems not...
     #idx_EQ = np.where((T_EQ_dec>t-(5/365.25)) & (T_EQ_dec<(t+15/365.25))  )[0]
     # calculate pre-SSE coordinate
     lon_bf, lat_bf = np.mean(A.iloc[idx_bf]['lon']), np.mean(A.iloc[idx_bf]['lat'])
     lon_tremor_bf, lat_tremor_bf = np.mean(tremor.iloc[idx_tremor_bf]['lon']), np.mean(tremor.iloc[idx_tremor_af]['lat'])
     # make moving average
-    window = 5
+    window = 10
     lon_avg = moving_average(np.array(A.iloc[idx_af]['lon']), window)
     lat_avg = moving_average(np.array(A.iloc[idx_af]['lat']), window)
     # same thing for tremor
