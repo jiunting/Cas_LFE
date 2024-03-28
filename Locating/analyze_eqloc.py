@@ -145,7 +145,7 @@ fname = "./EQloc_006_0.1_3_S.txt" # slab geometry without C8
 fname = "./EQloc_008_0.3_3_S.txt"
 #fname = "./EQloc_002_0.1_3_S.txt" # locating with C8 stations
 
-window_len = 10 # group N days together. Set to 1 means to calculate daily number.
+window_len = 1 # group N days together. Set to 1 means to calculate daily number.
 
 # Original LFE catalog (template matching)
 EQinfo = np.load('../Data/sav_family_phases.npy',allow_pickle=True) #Note! detection file has a shift for each family
@@ -179,7 +179,7 @@ A = pd.read_csv(fname,sep='\s+',header=0)
 # Get the misfit distribution for each stations i.e. use 3 stations, 5 stations or 8 stations etc.
 # Find the first N% of sorted misfit
 #first_N = 0.25 # a float from 0-1 select the residual threshold based on each groups
-first_N = 0.90 # a float from 0-1 select the residual threshold based on each groups
+first_N = 0.90 # a float from 0-1 select the residual threshold based on each groups. 0.9 means remove the last 10% worst fit.
 sav_thres = {}
 for N in np.unique(A['N']):
     tmp_residual = list(A[A['N']==N]['residual'])
@@ -275,21 +275,101 @@ window_T_EQ_dec = np.array([utc_to_decimal_year(UTCDateTime(t)) for t in window_
 mag = np.array(EQ['Magnitude'])[sor_idx] # apply the same sorting with T_EQ
 M0 = np.array([ML2M0(i) for i in mag])
 window_M0 = np.array([sum(M0[i]) for i in sav_idx_EQ])
+window_ML = np.array([sum(mag[i]) for i in sav_idx_EQ])
 
 # overlay on LFE plot
 plt.subplot(2,1,2)
 ax1 = plt.gca()
 ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
 ax2.set_xlim(ax1.get_xlim())
-#ax2.plot(window_T_EQ_dec, np.cumsum(window_M0),'r') # cumulated M0
-ax2.plot(T_EQ_dec, mag,'r')
-#ax2.plot(window_T_EQ_dec, np.cumsum(np.ones(len(window_T_EQ_dec))),'r') # cumulated number
-ax2.set_ylabel('accumulated M0')
+#ax2.plot(window_T_EQ_dec, np.cumsum(window_M0),'r') # cumulated windowed M0
+ax2.plot(window_T_EQ_dec, np.cumsum(window_ML),'r') # cumulated windowed ML, this is basically cumulated log(M0)
+# ax2.plot(T_EQ_dec)
+# ax2.plot(T_EQ_dec, mag,'r')
+#ax2.plot(window_T_EQ_dec, np.cumsum(np.ones(len(window_T_EQ_dec))),'r') # cumulated windowed number
+ax2.set_ylabel('accumulated ML')
 #plt.plot(window_T_EQ_dec, window_nums_EQ*(0.8*window_nums_LFE.max()/window_nums_EQ.max()), 'm')
 #plt.plot([T_EQ_dec,T_EQ_dec], [np.zeros(len(T_EQ)),mag*(0.7*window_nums_LFE.max()/mag.max())],'r-',lw=0.3,markersize=0.5)
 #ax2.plot([T_EQ_dec,T_EQ_dec], [np.zeros(len(T_EQ)),mag],'r-',lw=0.3,markersize=0.5)
 #plt.plot([T_EQ,T_EQ], [np.zeros(len(T_EQ)),M0*(0.7*window_nums_LFE.max()/mag.max())],'ro-',lw=0.3,markersize=0.5)
 ax2.grid(False)
+plt.show()
+
+#----------- Do the xcross analysis -----------
+"""
+For LFE: window_T_LFE_dec, window_nums_LFE
+For EQ: window_T_EQ_dec, window_nums_EQ or window_ML because window_nums_EQ treats ML1.0 and ML3.0 the same but they are very different
+        or window_M0
+"""
+from scipy import signal
+def cal_CCC(data1,data2):
+    data1 = (data1-np.mean(data1)) / (np.std(data1)*len(data1))
+    data2 = (data2-np.mean(data2)) / (np.std(data2))
+    tmpccf=signal.correlate(data1,data2,'full')
+    lag=tmpccf.argmax()
+    maxCCC=tmpccf[lag]
+    return maxCCC,lag-(len(data2)-1)
+
+plt.plot(window_T_LFE_dec, window_nums_LFE)
+ax1 = plt.gca()
+ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
+ax2.set_xlim(ax1.get_xlim())
+ax2.plot(window_T_EQ_dec,window_ML,'r')
+plt.show()
+# xcorr_st = np.max([window_T_LFE_dec[0],window_T_EQ_dec[0]])
+# xcorr_ed = np.min([window_T_LFE_dec[-1],window_T_EQ_dec[-1]])
+xcorr_st = np.max([window_T_LFE_dec[np.where(window_nums_LFE!=0)[0][0]], window_T_EQ_dec[np.where(window_nums_EQ!=0)[0][0]]])
+xcorr_ed = np.min([window_T_LFE_dec[-1],window_T_EQ_dec[-1]])
+tmp_idx = np.where((window_T_LFE_dec>=xcorr_st) & (window_T_LFE_dec<=xcorr_ed))[0]
+T_xcorr = window_T_LFE_dec[tmp_idx]
+wind = 60 #N pts a window
+mov = 1
+st = 0
+ed = st + wind
+sav_CC = []
+sav_lag = []
+sav_CC2 = []
+sav_lag2 = []
+sav_t = []
+while ed<len(T_xcorr):
+    data1 = window_nums_LFE[st:ed]
+    # data2 = window_nums_EQ[st:ed]
+    data2 = window_ML[st:ed]
+    data3 = np.random.rand(len(data1))
+    if sum(data1)==0 or sum(data2)==0:
+        st += mov
+        ed += mov
+        continue
+    # CC, lag = cal_CCC(window_nums_LFE[st:ed], window_nums_EQ[st:ed])
+    # CC, lag = cal_CCC(window_nums_LFE[st:ed], window_M0[st:ed])
+    # CC, lag = cal_CCC(window_nums_LFE[st:ed], np.random.rand(len(window_nums_LFE[st:ed]))-0.5) # if totally random
+    CC, lag = cal_CCC(data1, data2)
+    CC2, lag2 = cal_CCC(data1, data3)
+    if CC<0.3:
+        st += mov
+        ed += mov
+        continue
+    sav_CC.append(CC)
+    sav_lag.append(lag)
+    sav_CC2.append(CC2)
+    sav_lag2.append(lag2)
+    sav_t.append(np.mean(T_xcorr[st:ed]))
+    # if lag<-28:
+    #     plt.plot(window_nums_LFE[st:ed],'k',label='LFE')
+    #     ax1 = plt.gca()
+    #     ax2 = ax1.twinx() #twinx means same x axis (wanna plot different y)
+    #     ax2.set_xlim(ax1.get_xlim())
+    #     ax2.plot(window_M0[st:ed],'r',label='EQ')
+    #     plt.show()
+    st += mov
+    ed += mov
+
+plt.scatter(sav_t, sav_lag, c=sav_CC, s=np.array(sav_CC)*10, cmap='jet')
+plt.colorbar()
+plt.show()
+
+plt.hist(sav_lag,15)
+plt.hist(sav_lag2,15,color='r',alpha=0.5)
 plt.show()
 
 #-----------Start some spatial analysis------------

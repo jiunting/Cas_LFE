@@ -2,7 +2,7 @@
 
 import numpy as np
 import matplotlib
-matplotlib.use('pdf') #instead using interactive backend
+#matplotlib.use('pdf') #instead using interactive backend
 import matplotlib.pyplot as plt
 import h5py
 import pandas as pd
@@ -10,7 +10,7 @@ import pandas as pd
 import glob
 from obspy import UTCDateTime
 import datetime
-import seaborn as sns
+#import seaborn as sns
 
 
 def dect_time(file_path: str, thresh=0.1, is_catalog: bool=False, EQinfo: str=None, return_all: bool=False) -> np.ndarray:
@@ -117,6 +117,20 @@ def utc_to_decimal_year(utc):
     total_t = UTCDateTime(utc.year+1, 1, 1) - UTCDateTime(utc.year, 1, 1)
     return utc.year + (utc - UTCDateTime(utc.year, 1, 1)) / total_t
 
+def decimal_year_to_utc(decimal_year):
+    """
+    Converts a decimal year to ObsPy UTCDateTime object.
+    """
+    # Extract the year and fractional part from the decimal year
+    year = int(decimal_year)
+    fraction = decimal_year - year
+    # Calculate the total number of seconds in the year
+    total_seconds_in_year = (UTCDateTime(year + 1, 1, 1) - UTCDateTime(year, 1, 1))
+    # Calculate the number of seconds corresponding to the fractional part of the year
+    seconds = fraction * total_seconds_in_year
+    # Create and return the UTCDateTime object
+    return UTCDateTime(year, 1, 1) + seconds
+
 """
 # Old function is inaccurate when T breaks more than 2 days!!
 def get_daily_nums(T):
@@ -167,8 +181,11 @@ cat_time,cat_daynums = get_daily_nums(sorted(sav_OT_template))
 tremor = pd.read_csv("tremor_events-2009-08-06T00_00_00-2014-12-31T23_59_59.csv")
 tremor = tremor[(tremor['lon']>=-124.5) & (tremor['lon']<=-123) & (tremor['lat']>=48.1) & (tremor['lat']<=49.3)]
 tremor_t = [UTCDateTime(tt).datetime for tt in tremor['starttime']]
-trem_time,trem_daynums = get_daily_nums(sorted(tremor_t),15)
+trem_time,trem_daynums = get_daily_nums(sorted(tremor_t))
 # trem_time = np.array([utc_to_decimal_year(UTCDateTime(i)) for i in trem_time])
+
+# load SSE
+SSE = pd.read_csv("SSE_catalog.csv", skiprows=1, names=['T','lat']) # note that only T is used. Lat is meaningless
 
 # load model detection .csv file
 #csvs = glob.glob('./Detections_S_new/*.csv')
@@ -192,27 +209,44 @@ for csv_path in csvs:
     sav_detcTime[netSta].reset_index(drop=True, inplace=True) #reset the keys e.g. [1,5,6,10...] to [0,1,2,3,...]
 
 # plotting detection timeseries 
-sns.set()
+#sns.set()
+#custom_palette = sns.hls_palette()
+#sns.set_palette(custom_palette)
 plt.figure()
 #plt.plot(sav_OT_template,np.zeros(len(sav_OT_template)),'k.',markersize=1)
 #plt.plot(cat_time,(cat_daynums/max(np.abs(cat_daynums)))*0.5,'-',color=[0.5,0.5,0.5])
-plt.fill_between(cat_time,(cat_daynums/max(np.abs(cat_daynums)))*0.8,0,color=[0.5,0.5,0.5])
-plt.text(max(sav_OT_template),0,'Catalog',fontsize=10)
+
+#plot SSE as background
+for iSSE in range(len(SSE)//2):
+    st = decimal_year_to_utc(SSE['T'].iloc[iSSE*2]).datetime
+    ed = decimal_year_to_utc(SSE['T'].iloc[iSSE*2+1]).datetime
+    plt.fill_betweenx([0,len(sav_detcTime.keys())+2],st,ed,color=[0.2,0.2,0.2],alpha=0.2,linewidth=0.01)
+
+# plot tremor
+plt.fill_between(trem_time,(trem_daynums/max(np.abs(trem_daynums)))*0.8,0,color=[0,0,1])
+plt.text(max(tremor_t)+datetime.timedelta(days=30),0,'Tremor Catalog',fontsize=10)
+#plot catalog
+plt.fill_between(cat_time,(cat_daynums/max(np.abs(cat_daynums)))*0.8+1,1,color=[0,0,0])
+plt.text(max(sav_OT_template)+datetime.timedelta(days=30),1,'LFE Catalog',fontsize=10)
 for n,k in enumerate(sav_detcTime.keys()):
     print(' plotting k=%s, len=%d'%(k,len(sav_detcTime[k])))
     #plt.plot(sav_detcTime[k],np.ones(len(sav_detcTime[k]))*(n+1),'.',markersize=1)
     sav_T,sav_daynums = get_daily_nums(sav_detcTime[k]) #get daily number tcs
-    h = plt.fill_between(sav_T,(sav_daynums/max(np.abs(sav_daynums)))*0.8+(n+1),(n+1),linewidth=0.1)
+    h = plt.fill_between(sav_T,(sav_daynums/max(np.abs(sav_daynums)))*0.8+(n+1+1),(n+1+1),linewidth=0.15)
     h.set_edgecolor(h.get_facecolor())
     if k=='CN.PFB':
-        plt.text(max(sav_detcTime[k]),n+1,k,ha='center',fontsize=10)
+        plt.text(max(sav_detcTime[k]),n+1+1,k,ha='center',fontsize=10)
     else:
-        plt.text(max(sav_detcTime[k]),n+1,k,fontsize=10)
+        plt.text(max(sav_detcTime[k]),n+1+1,k,fontsize=10)
     
 plt.yticks([],[])
 plt.xlabel('Time (year)',fontsize=14,labelpad=0)
 ax1=plt.gca()
-ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12) 
+ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
+ax1.spines['top'].set_visible(False)
+ax1.spines['right'].set_visible(False)
+ax1.spines['bottom'].set_visible(True)
+ax1.spines['left'].set_visible(False)
 #plt.xlim([datetime.datetime(2005,1,1), datetime.datetime(2005,1,30)])
 
 #plt.savefig('detection_tcs_all_y%.1f.png'%(thres))
@@ -225,7 +259,10 @@ ax1.tick_params(pad=1.0,length=1.5,size=1.5,labelsize=12)
 #plt.savefig('detection_tcs_all_S_new_y0.1_1005.png',dpi=450)
 # plt.savefig('detection_tcs_all_S_new_y0.1_050523.png',dpi=450)
 # plt.savefig('detection_tcs_all_S_new_y0.1_071023.png',dpi=450)
-plt.savefig('detection_tcs_all_S_C8_new_y0.1_071023.png',dpi=450)
+#plt.savefig('detection_tcs_all_S_C8_new_y0.1_071023.png',dpi=450)
+
+#plt.savefig('detection_tcs_all_S_new_y0.1_082723.png',dpi=450)
+plt.savefig('detection_tcs_all_S_new_y0.1_031924.png',dpi=450)
 
 #plt.savefig('detection_tcs_all_S_C8_new_y0.1_1005.png',dpi=300)
 #plt.savefig('detection_tcs_all_P_new_y0.1_0906.png',dpi=300)
